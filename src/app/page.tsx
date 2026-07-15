@@ -1,463 +1,486 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { useAudioUnlock, ensureUnlocked, playChord, setMasterVolume } from '@/lib/audio';
+import { ensureUnlocked, playNote, playChord, setMasterVolume } from '@/lib/audio';
 
-// Dynamic WebGL 3D Panorama Background
-const BackgroundWebGL = dynamic(() => import('@/components/BackgroundWebGL'), { ssr: false });
-
-// Interactive overlay HUDs
-const CustomCursor = dynamic(() => import('@/components/CustomCursor'), { ssr: false });
-const Chapter1 = dynamic(() => import('@/components/Chapter1'), { ssr: false });
-const ChapterFibonacci = dynamic(() => import('@/components/ChapterFibonacci'), { ssr: false });
+// All 15 exhibits loaded dynamically (no SSR for canvas/WebGL)
+const ExhibitGalaxy = dynamic(() => import('@/components/ExhibitGalaxy'), { ssr: false });
+const ExhibitForest = dynamic(() => import('@/components/ExhibitForest'), { ssr: false });
+const ExhibitInk = dynamic(() => import('@/components/ExhibitInk'), { ssr: false });
+const ExhibitFlower = dynamic(() => import('@/components/ExhibitFlower'), { ssr: false });
+const ExhibitChladni = dynamic(() => import('@/components/ExhibitChladni'), { ssr: false });
+const ExhibitGargantua = dynamic(() => import('@/components/ExhibitGargantua'), { ssr: false });
+const ExhibitCircle = dynamic(() => import('@/components/ExhibitCircle'), { ssr: false });
 const ChapterStandingWaves = dynamic(() => import('@/components/ChapterStandingWaves'), { ssr: false });
+const ChapterFibonacci = dynamic(() => import('@/components/ChapterFibonacci'), { ssr: false });
 const ChapterFourier = dynamic(() => import('@/components/ChapterFourier'), { ssr: false });
-const ChapterBlackHole = dynamic(() => import('@/components/ChapterBlackHole'), { ssr: false });
 const ChapterNorthernLights = dynamic(() => import('@/components/ChapterNorthernLights'), { ssr: false });
+const ExhibitCymatics = dynamic(() => import('@/components/ExhibitCymatics'), { ssr: false });
+const ExhibitLissajous = dynamic(() => import('@/components/ExhibitLissajous'), { ssr: false });
+const ExhibitColorHarmony = dynamic(() => import('@/components/ExhibitColorHarmony'), { ssr: false });
+const ExhibitWaveformDNA = dynamic(() => import('@/components/ExhibitWaveformDNA'), { ssr: false });
 
-// Ex-chapters (re-wired to fit the themes)
-const Chapter2 = dynamic(() => import('@/components/Chapter2'), { ssr: false });
-const Chapter3 = dynamic(() => import('@/components/Chapter3'), { ssr: false });
-const Chapter5 = dynamic(() => import('@/components/Chapter5'), { ssr: false });
-const Chapter7 = dynamic(() => import('@/components/Chapter7'), { ssr: false });
-const Chapter8 = dynamic(() => import('@/components/Chapter8'), { ssr: false });
-const ChapterFinale = dynamic(() => import('@/components/ChapterFinale'), { ssr: false });
-
-// 3 Thematic Worlds (from reference images)
-const WORLDS = [
-  {
-    id: 1,
-    label: 'Realm of Waves',
-    subtitle: 'Reference Image 2 Theme',
-    color: '#0080FF',
-    glowColor: 'var(--glow-teal)',
-    description: 'Resonance, frequencies, and note coordinates mapped on infinite particle waves.',
-    chapters: [
-      { id: 'resonance', label: 'Prime Resonance' },
-      { id: 'frequency', label: 'Hz Frequencies' },
-      { id: 'notes', label: 'Birth of Notes' },
-      { id: 'fibonacci', label: 'Fibonacci Spiral' },
-    ]
-  },
-  {
-    id: 2,
-    label: 'Realm of Gravity',
-    subtitle: 'Reference Image 1 Theme',
-    color: '#F5D28A',
-    glowColor: 'var(--glow-gold)',
-    description: 'Relativistic standing waves, Circle of Fifths, and the Gargantua singularity.',
-    chapters: [
-      { id: 'harmonics', label: 'Standing Waves' },
-      { id: 'fifths', label: 'Circle of Fifths' },
-      { id: 'gargantua', label: 'Gargantua Plunge' },
-    ]
-  },
-  {
-    id: 3,
-    label: 'Realm of Light',
-    subtitle: 'Reference Image 3 Theme',
-    color: '#B026FF',
-    glowColor: '0 0 20px rgba(176,38,255,0.4)',
-    description: 'Excited photon ribbons, Fourier decomposition, wave geometry, and instruments.',
-    chapters: [
-      { id: 'fourier', label: 'Fourier Decomposition' },
-      { id: 'geometry', label: 'Instruments & Timbre' },
-      { id: 'emotion', label: 'Key Emotions' },
-      { id: 'aurora', label: 'Excited Spectra' },
-      { id: 'finale', label: ' Treble Clef Finale' },
-    ]
-  }
+// Exhibit definitions
+const EXHIBITS = [
+  { id: 0,  icon: '✦', title: 'Stellar Constellation', sub: 'Notes become stars, chords become constellations', color: '#aaddff' },
+  { id: 1,  icon: '🌿', title: 'Growing Forest',       sub: 'Sound grows branches, harmony blooms flowers',   color: '#00ff88' },
+  { id: 2,  icon: '🌊', title: 'Smoke & Ink',           sub: 'Every note stains the universe permanently',     color: '#00dcff' },
+  { id: 3,  icon: '🌸', title: 'Blooming Flowers',      sub: 'Pitch shapes petals, chords create gardens',     color: '#cc88ff' },
+  { id: 4,  icon: '◈',  title: 'Chladni Patterns',      sub: 'Vibration creates geometric sand figures',        color: '#e8e8e0' },
+  { id: 5,  icon: '⚫', title: 'Gargantua',             sub: 'NASA-fidelity black hole with gravitational sound', color: '#F5D28A' },
+  { id: 6,  icon: '◎',  title: 'Circle of Fifths',      sub: 'The fundamental map of musical harmony',         color: '#ccbbff' },
+  { id: 7,  icon: '〰', title: 'Standing Waves',        sub: 'Pluck the string, split into harmonics',         color: '#00ff66' },
+  { id: 8,  icon: '🐚', title: 'Fibonacci Spiral',      sub: 'The golden ratio hidden in frequency',           color: '#F5D28A' },
+  { id: 9,  icon: '⊙',  title: 'Fourier Epicycles',     sub: 'Rotating vectors synthesize any wave',           color: '#00FFFF' },
+  { id: 10, icon: '🌌', title: 'Northern Lights',       sub: 'Excited photon emission from atomic cascades',   color: '#44ff88' },
+  { id: 11, icon: '💧', title: 'Cymatics',              sub: 'Wave interference creates visible patterns',     color: '#00ddcc' },
+  { id: 12, icon: '∞',  title: 'Lissajous Figures',     sub: 'Harmonic pendulums draw infinite geometry',      color: '#cc99ff' },
+  { id: 13, icon: '🎨', title: 'Color Harmony',         sub: 'Chords mapped to synesthetic color palettes',    color: '#ffaaaa' },
+  { id: 14, icon: '📊', title: 'Waveform DNA',          sub: 'See the hidden structure inside every sound',    color: '#00ff88' },
 ];
 
+// Render exhibit component by index
+function ExhibitRenderer({ idx }: { idx: number }) {
+  switch (idx) {
+    case 0: return <ExhibitGalaxy />;
+    case 1: return <ExhibitForest />;
+    case 2: return <ExhibitInk />;
+    case 3: return <ExhibitFlower />;
+    case 4: return <ExhibitChladni />;
+    case 5: return <ExhibitGargantua />;
+    case 6: return <ExhibitCircle />;
+    case 7: return <ChapterStandingWaves />;
+    case 8: return <ChapterFibonacci />;
+    case 9: return <ChapterFourier />;
+    case 10: return <ChapterNorthernLights />;
+    case 11: return <ExhibitCymatics />;
+    case 12: return <ExhibitLissajous />;
+    case 13: return <ExhibitColorHarmony />;
+    case 14: return <ExhibitWaveformDNA />;
+    default: return null;
+  }
+}
+
 export default function Home() {
-  const [activeWorld, setActiveWorld] = useState(0); // 0 = Hub, 1-3 = Focused Worlds
-  const [activeChapterIdx, setActiveChapterIdx] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  const [entered, setEntered] = useState(false);
+  const [activeExhibit, setActiveExhibit] = useState(-1); // -1 = hub view
   const [soundOn, setSoundOn] = useState(true);
-  const [hasEntered, setHasEntered] = useState(false);
-  const [isPreloading, setIsPreloading] = useState(true);
+  const [carouselAngle, setCarouselAngle] = useState(0);
+  const [hoveredCard, setHoveredCard] = useState(-1);
 
-  // Panorama yaw/pitch state (only updated on click or slow intervals to prevent infinite rendering)
-  const [yaw, setYaw] = useState(0);
-  const [pitch, setPitch] = useState(-0.16);
-
-  const yawBaseRef = useRef(0);
-  const mouseOffsetRef = useRef({ x: 0, y: 0 });
-
-  useAudioUnlock();
-
-  // Mouse move 360-degree panorama steering
   useEffect(() => {
-    if (!hasEntered) return;
-    const onMove = (e: MouseEvent) => {
-      const xOffset = ((e.clientX / window.innerWidth) - 0.5) * Math.PI * 1.8;
-      const yOffset = -0.16 + ((e.clientY / window.innerHeight) - 0.5) * Math.PI * 0.4;
-      mouseOffsetRef.current = { x: xOffset, y: yOffset };
+    setMounted(true);
+  }, []);
+
+  // Drag-to-rotate state (all in refs to avoid re-render storms)
+  const isDraggingRef = useRef(false);
+  const lastMouseXRef = useRef(0);
+  const carouselAngleRef = useRef(0);
+  const velocityRef = useRef(0);
+  const animRef = useRef(0);
+
+  // Sync ref with state
+  useEffect(() => {
+    carouselAngleRef.current = carouselAngle;
+  }, [carouselAngle]);
+
+  // Physics loop for smooth carousel spin
+  useEffect(() => {
+    if (!entered || activeExhibit >= 0) return;
+    const tick = () => {
+      if (!isDraggingRef.current) {
+        // Inertia decay
+        velocityRef.current *= 0.96;
+        // Slow auto-rotation
+        velocityRef.current += 0.015;
+        carouselAngleRef.current += velocityRef.current;
+        setCarouselAngle(carouselAngleRef.current);
+      }
+      animRef.current = requestAnimationFrame(tick);
     };
-    window.addEventListener('mousemove', onMove);
-    return () => window.removeEventListener('mousemove', onMove);
-  }, [hasEntered]);
+    tick();
+    return () => cancelAnimationFrame(animRef.current);
+  }, [entered, activeExhibit]);
 
-  // Slowly orbit base yaw over time
+  // Mouse/touch drag handlers
   useEffect(() => {
-    if (!hasEntered) return;
-    const timer = setInterval(() => {
-      yawBaseRef.current += 0.005;
-      // Do not trigger React state updates if focused in a world, only update at the hub
-      setYaw(yawBaseRef.current + mouseOffsetRef.current.x);
-      setPitch(mouseOffsetRef.current.y);
-    }, 32);
-    return () => clearInterval(timer);
-  }, [hasEntered]);
+    if (!entered || activeExhibit >= 0) return;
 
-  const handleEnterExperience = async () => {
-    await ensureUnlocked();
-    setHasEntered(true);
-    setIsPreloading(false);
-    playChord([130.81, 196.00, 261.63, 329.63, 392.00, 493.88], 'sine', 0.12);
+    const onDown = (e: MouseEvent) => {
+      isDraggingRef.current = true;
+      lastMouseXRef.current = e.clientX;
+      velocityRef.current = 0;
+    };
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const dx = e.clientX - lastMouseXRef.current;
+      lastMouseXRef.current = e.clientX;
+      carouselAngleRef.current += dx * 0.3;
+      velocityRef.current = dx * 0.3;
+      setCarouselAngle(carouselAngleRef.current);
+    };
+    const onUp = () => { isDraggingRef.current = false; };
+
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [entered, activeExhibit]);
+
+  const handleEnter = async () => {
+    try {
+      await ensureUnlocked();
+    } catch (e) {
+      console.warn("Audio unlock failed, entering anyway:", e);
+    }
+    setEntered(true);
+    try {
+      playChord([130.81, 196.00, 261.63, 329.63, 392.00], 'sine', 0.1);
+    } catch (e) {}
+  };
+
+  const openExhibit = (idx: number) => {
+    setActiveExhibit(idx);
+    playNote(261.63 + idx * 30, 'sine', 0.8, 0.1);
+  };
+
+  const closeExhibit = () => {
+    setActiveExhibit(-1);
+    playNote(392, 'sine', 0.5, 0.08);
   };
 
   const toggleSound = () => {
-    const nextState = !soundOn;
-    setSoundOn(nextState);
-    setMasterVolume(nextState ? 1 : 0);
+    const next = !soundOn;
+    setSoundOn(next);
+    setMasterVolume(next ? 1 : 0);
   };
 
-  const enterWorld = (id: number) => {
-    setActiveWorld(id);
-    setActiveChapterIdx(0);
-    playChord([261.63, 329.63, 392.00, 523.25], 'sine', 0.08);
-  };
+  if (!mounted) {
+    return <div style={{ position: 'fixed', inset: 0, background: '#030308' }} />;
+  }
 
-  const exitWorld = () => {
-    setActiveWorld(0);
-    playChord([523.25, 392.00, 329.63, 261.63], 'sine', 0.06);
-  };
-
-  const currentWorldData = WORLDS.find(w => w.id === activeWorld);
-  const activeChapter = currentWorldData?.chapters[activeChapterIdx];
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', backgroundColor: '#050507' }}>
-      {isPreloading && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: '#050507',
-            zIndex: 9999,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          <div
-            style={{
+  // ═══════════ PRELOADER ═══════════
+  if (!entered) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, background: '#030308',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'Cormorant Garamond, serif',
+      }}>
+        {/* Ambient particles */}
+        <div style={{
+          position: 'absolute', width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none',
+        }}>
+          {Array.from({ length: 40 }).map((_, i) => (
+            <div key={i} style={{
               position: 'absolute',
-              width: '450px',
-              height: '450px',
-              background: 'radial-gradient(circle, rgba(245, 210, 138, 0.08) 0%, rgba(0,0,0,0) 70%)',
-              animation: 'pulseGlow 5s ease infinite',
-            }}
-          />
-          <div style={{ zIndex: 10, textAlign: 'center', padding: '2rem' }}>
-            <span
-              style={{
-                fontFamily: 'Space Mono, monospace',
-                fontSize: '0.65rem',
-                letterSpacing: '0.45em',
-                color: 'var(--gold)',
-                textShadow: 'var(--glow-gold)',
-                textTransform: 'uppercase',
-                display: 'block',
-                marginBottom: '1rem',
-              }}
-            >
-              Interactive Celestial Gallery
-            </span>
-            <h1
-              style={{
-                fontFamily: 'Cormorant Garamond, serif',
-                fontSize: 'clamp(2.5rem, 5vw, 5.5rem)',
-                fontWeight: 300,
-                letterSpacing: '0.05em',
-                color: 'transparent',
-                backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #F5D28A 50%, #0E1F22 100%)',
-                backgroundClip: 'text',
-                WebkitBackgroundClip: 'text',
-                marginBottom: '2.5rem',
-                lineHeight: 1.2,
-              }}
-            >
-              The 360° Museum<br />of Vibration
-            </h1>
-
-            <button
-              onClick={handleEnterExperience}
-              style={{
-                padding: '1.2rem 3.5rem',
-                border: '1px solid rgba(245, 210, 138, 0.4)',
-                borderRadius: '100px',
-                background: 'rgba(245, 210, 138, 0.04)',
-                color: 'var(--gold)',
-                fontFamily: 'Space Mono, monospace',
-                fontSize: '0.8rem',
-                letterSpacing: '0.2em',
-                textTransform: 'uppercase',
-                cursor: 'pointer',
-                transition: 'all 0.4s ease',
-                boxShadow: '0 0 20px rgba(245, 210, 138, 0.1)',
-              }}
-            >
-              Enter Experience
-            </button>
-
-            <span
-              style={{
-                display: 'block',
-                fontFamily: 'Space Grotesk, sans-serif',
-                fontWeight: 200,
-                fontSize: '0.7rem',
-                color: 'rgba(255,255,255,0.35)',
-                letterSpacing: '0.1em',
-                marginTop: '1.5rem',
-              }}
-            >
-              Move Mouse to Look Around 360° · headphones recommended
-            </span>
-          </div>
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              width: `${1 + Math.random() * 2}px`,
+              height: `${1 + Math.random() * 2}px`,
+              borderRadius: '50%',
+              background: `hsla(${200 + Math.random() * 60}, 80%, 75%, ${0.2 + Math.random() * 0.5})`,
+              animation: `float ${5 + Math.random() * 10}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 5}s`,
+            }} />
+          ))}
         </div>
-      )}
 
-      {hasEntered && (
-        <>
-          {/* Custom celestial cursor */}
-          <CustomCursor />
+        <div style={{
+          position: 'absolute', width: '500px', height: '500px',
+          background: 'radial-gradient(circle, rgba(245,210,138,0.06) 0%, transparent 70%)',
+          animation: 'pulseGlow 6s ease infinite',
+          pointerEvents: 'none',
+        }} />
 
-          {/* Sticky WebGL Background executing the 360 flight spline */}
-          <BackgroundWebGL activeWorld={activeWorld} progress={activeWorld > 0 ? 1.0 : 0.0} yaw={yaw} pitch={pitch} />
+        <span style={{
+          fontFamily: 'Space Mono, monospace', fontSize: '0.6rem', letterSpacing: '0.5em',
+          color: '#F5D28A', textTransform: 'uppercase', marginBottom: '1.5rem', opacity: 0.8,
+          textShadow: '0 0 20px rgba(245,210,138,0.4)',
+          position: 'relative', zIndex: 5,
+        }}>
+          15 Interactive Exhibits
+        </span>
 
-          {/* 1. CENTRAL HUB VIEW: Interactive portals selectors floating in 360 degrees */}
-          {activeWorld === 0 && (
-            <div
-              style={{
-                position: 'absolute',
-                left: '50%',
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 10,
-                display: 'flex',
-                gap: '2.5rem',
-                justifyContent: 'center',
-                flexWrap: 'wrap',
-                width: 'min(1000px, 90vw)',
-                pointerEvents: 'auto',
-              }}
-            >
-              {WORLDS.map(world => (
-                <div
-                  key={world.id}
-                  onClick={() => enterWorld(world.id)}
-                  style={{
-                    padding: '2.2rem',
-                    background: 'rgba(14, 15, 20, 0.72)',
-                    border: `1.5px solid ${world.color}15`,
-                    borderRadius: '16px',
-                    cursor: 'pointer',
-                    maxWidth: '280px',
-                    textAlign: 'center',
-                    transition: 'all 0.4s ease',
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
-                  }}
-                  onMouseEnter={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.borderColor = world.color;
-                    el.style.boxShadow = `0 0 30px ${world.color}25`;
-                    el.style.transform = 'translateY(-6px)';
-                  }}
-                  onMouseLeave={e => {
-                    const el = e.currentTarget as HTMLElement;
-                    el.style.borderColor = `${world.color}15`;
-                    el.style.boxShadow = '0 10px 40px rgba(0,0,0,0.5)';
-                    el.style.transform = 'none';
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: 'Space Grotesk, sans-serif',
-                      fontSize: '0.65rem',
-                      letterSpacing: '0.25em',
-                      color: world.color,
-                      textTransform: 'uppercase',
-                      marginBottom: '0.8rem',
-                    }}
-                  >
-                    {world.subtitle}
-                  </div>
-                  <h3 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.8rem', color: '#ffffff', marginBottom: '0.8rem', fontWeight: 300 }}>
-                    {world.label}
-                  </h3>
-                  <p style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.75rem', color: 'var(--white-dim)', lineHeight: 1.6 }}>
-                    {world.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
+        <h1 style={{
+          fontSize: 'clamp(2.8rem, 6vw, 6rem)', fontWeight: 200, letterSpacing: '0.04em',
+          background: 'linear-gradient(135deg, #fff 0%, #F5D28A 40%, #00dcff 70%, #cc88ff 100%)',
+          backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent',
+          textAlign: 'center', lineHeight: 1.15, marginBottom: '2.5rem',
+          position: 'relative', zIndex: 5,
+        }}>
+          Museum of<br />Vibration
+        </h1>
 
-          {/* 2. WORLDS ACTIVE DASHBOARD PANELS */}
-          {activeWorld > 0 && currentWorldData && (
-            <>
-              {/* Timeline navigator on the left */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: '3.5rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  zIndex: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '1.2rem',
-                  pointerEvents: 'auto',
-                }}
-              >
-                <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.65rem', color: currentWorldData.color, letterSpacing: '0.25em', textTransform: 'uppercase' }}>
-                  World Spline
-                </span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                  {currentWorldData.chapters.map((ch, idx) => (
-                    <div
-                      key={ch.id}
-                      onClick={() => setActiveChapterIdx(idx)}
-                      style={{
-                        padding: '0.8rem 1.4rem',
-                        background: activeChapterIdx === idx ? `${currentWorldData.color}08` : 'rgba(14, 15, 20, 0.65)',
-                        border: `1px solid ${activeChapterIdx === idx ? currentWorldData.color : 'rgba(255, 255, 255, 0.08)'}`,
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease',
-                        fontFamily: 'Space Grotesk, sans-serif',
-                        fontSize: '0.8rem',
-                        color: activeChapterIdx === idx ? currentWorldData.color : '#ffffff',
-                        boxShadow: activeChapterIdx === idx ? `0 0 15px ${currentWorldData.color}25` : 'none',
-                      }}
-                    >
-                      {ch.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
+        <p style={{
+          fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.82rem', fontWeight: 300,
+          color: 'rgba(255,255,255,0.4)', maxWidth: '420px', textAlign: 'center',
+          lineHeight: 1.7, marginBottom: '3rem',
+          position: 'relative', zIndex: 5,
+        }}>
+          Explore the physics of music through black holes, galaxies, forests,
+          ink, flowers, sand patterns, and the geometry of harmony.
+        </p>
 
-              {/* Core interactive playground overlay card */}
-              <div
-                style={{
-                  position: 'absolute',
-                  right: '3.5rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  zIndex: 20,
-                  width: 'min(520px, 90vw)',
-                  pointerEvents: 'auto',
-                  animation: 'fadeInUp 0.5s ease forwards',
-                }}
-              >
-                <div className="cosmic-card" style={{ position: 'relative' }}>
-                  {/* Exit chapter return to hub */}
-                  <button
-                    onClick={exitWorld}
-                    style={{
-                      position: 'absolute',
-                      top: '1.5rem',
-                      right: '1.5rem',
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'rgba(255,255,255,0.4)',
-                      fontSize: '1.2rem',
-                      cursor: 'pointer',
-                      fontFamily: 'Space Mono, monospace',
-                    }}
-                  >
-                    ✕
-                  </button>
+        <button onClick={handleEnter} style={{
+          position: 'relative', zIndex: 10,
+          padding: '1.3rem 4rem', border: '1px solid rgba(245,210,138,0.35)',
+          borderRadius: '100px', background: 'rgba(245,210,138,0.03)', color: '#F5D28A',
+          fontFamily: 'Space Mono, monospace', fontSize: '0.75rem', letterSpacing: '0.25em',
+          textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.4s ease',
+          boxShadow: '0 0 30px rgba(245,210,138,0.08)',
+        }}>
+          Enter Museum
+        </button>
 
-                  {/* Render the selected active chapter dashboard */}
-                  {/* WORLD 1 (WAVES THEME) */}
-                  {activeWorld === 1 && activeChapter?.id === 'resonance' && <Chapter1 />}
-                  {activeWorld === 1 && activeChapter?.id === 'frequency' && <Chapter2 />}
-                  {activeWorld === 1 && activeChapter?.id === 'notes' && <Chapter3 />}
-                  {activeWorld === 1 && activeChapter?.id === 'fibonacci' && <ChapterFibonacci />}
+        <span style={{
+          fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)',
+          marginTop: '2rem', letterSpacing: '0.1em',
+        }}>
+          Drag to explore 360° · Click exhibits · Headphones recommended
+        </span>
+      </div>
+    );
+  }
 
-                  {/* WORLD 2 (GRAVITY THEME) */}
-                  {activeWorld === 2 && activeChapter?.id === 'harmonics' && <ChapterStandingWaves />}
-                  {activeWorld === 2 && activeChapter?.id === 'fifths' && <Chapter5 />}
-                  {activeWorld === 2 && activeChapter?.id === 'gargantua' && (
-                    <ChapterBlackHole
-                      isPlayingSound={soundOn}
-                      toggleSound={toggleSound}
-                    />
-                  )}
+  // ═══════════ FULLSCREEN EXHIBIT ═══════════
+  if (activeExhibit >= 0) {
+    const ex = EXHIBITS[activeExhibit];
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: '#030308', zIndex: 100 }}>
+        {/* Exhibit canvas fills entire screen */}
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <ExhibitRenderer idx={activeExhibit} />
+        </div>
 
-                  {/* WORLD 3 (LIGHT THEME) */}
-                  {activeWorld === 3 && activeChapter?.id === 'fourier' && <ChapterFourier />}
-                  {activeWorld === 3 && activeChapter?.id === 'geometry' && <Chapter7 />}
-                  {activeWorld === 3 && activeChapter?.id === 'emotion' && <Chapter8 />}
-                  {activeWorld === 3 && activeChapter?.id === 'aurora' && <ChapterNorthernLights />}
-                  {activeWorld === 3 && activeChapter?.id === 'finale' && <ChapterFinale />}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Navigation Bar HUD */}
-          <nav className="nav-cosmic" style={{ zIndex: 30 }}>
-            <div className="nav-title" onClick={exitWorld} style={{ cursor: 'pointer' }}>
-              𝄞 COSMIC GALAXIES
-            </div>
-            {activeWorld > 0 && (
-              <button className="btn-secondary" onClick={exitWorld} style={{ fontSize: '0.65rem', padding: '0.5rem 1.5rem' }}>
-                ← Cosmic Hub
-              </button>
-            )}
-          </nav>
-
-          {/* Audio HUD control */}
-          <button
-            className="sound-toggle"
-            onClick={toggleSound}
-            title={soundOn ? 'Mute' : 'Unmute'}
-            style={{
-              borderColor: soundOn ? 'var(--gold)' : 'rgba(255, 0, 85, 0.4)',
-              color: soundOn ? 'var(--gold)' : '#FF2D55',
-              boxShadow: soundOn ? 'var(--glow-gold)' : 'none',
-              zIndex: 30,
-            }}
-          >
-            {soundOn ? '🔊' : '🔇'}
+        {/* Top bar */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+          padding: '1.2rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'linear-gradient(to bottom, rgba(3,3,8,0.8) 0%, transparent 100%)',
+        }}>
+          <button onClick={closeExhibit} style={{
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: '8px', padding: '0.5rem 1.2rem', cursor: 'pointer',
+            color: 'rgba(255,255,255,0.7)', fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.75rem',
+            transition: 'all 0.3s',
+          }}>
+            ← Back to Museum
           </button>
 
-          {/* Central hub look hint */}
-          {activeWorld === 0 && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '3rem',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                textAlign: 'center',
-                pointerEvents: 'none',
-                animation: 'pulseGlow 3s ease infinite',
-                zIndex: 10,
-              }}
-            >
-              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: '0.65rem', letterSpacing: '0.4em', color: 'rgba(255,255,255,0.3)' }}>
-                PAN YAW WITH CURSOR · SELECT A REALM TO COMMENCE
-              </span>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', fontWeight: 300,
+              color: ex.color, letterSpacing: '0.05em',
+            }}>
+              {ex.icon} {ex.title}
             </div>
-          )}
-        </>
-      )}
+            <div style={{
+              fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.65rem',
+              color: 'rgba(255,255,255,0.35)', marginTop: '0.2rem',
+            }}>
+              {ex.sub}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
+            {/* Prev / Next */}
+            <button onClick={() => openExhibit((activeExhibit - 1 + 15) % 15)} style={{
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '6px', padding: '0.4rem 0.8rem', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.6)', fontFamily: 'Space Mono, monospace', fontSize: '0.7rem',
+            }}>‹</button>
+            <span style={{ color: 'rgba(255,255,255,0.35)', fontFamily: 'Space Mono, monospace', fontSize: '0.65rem' }}>
+              {activeExhibit + 1}/15
+            </span>
+            <button onClick={() => openExhibit((activeExhibit + 1) % 15)} style={{
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '6px', padding: '0.4rem 0.8rem', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.6)', fontFamily: 'Space Mono, monospace', fontSize: '0.7rem',
+            }}>›</button>
+
+            <button onClick={toggleSound} style={{
+              background: 'rgba(255,255,255,0.06)', border: `1px solid ${soundOn ? 'rgba(245,210,138,0.3)' : 'rgba(255,0,85,0.3)'}`,
+              borderRadius: '6px', padding: '0.4rem 0.8rem', cursor: 'pointer',
+              color: soundOn ? '#F5D28A' : '#FF2D55', fontSize: '1rem',
+            }}>
+              {soundOn ? '🔊' : '🔇'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════ 3D CAROUSEL HUB ═══════════
+  const cardAngle = 360 / EXHIBITS.length;
+  const radius = Math.max(550, typeof window !== 'undefined' ? window.innerWidth * 0.42 : 600);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: '#030308', overflow: 'hidden',
+      cursor: isDraggingRef.current ? 'grabbing' : 'grab',
+    }}>
+      {/* Starfield background */}
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        {Array.from({ length: 120 }).map((_, i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
+            width: `${0.5 + Math.random() * 2}px`,
+            height: `${0.5 + Math.random() * 2}px`,
+            borderRadius: '50%',
+            background: `rgba(${180 + Math.random() * 75}, ${200 + Math.random() * 55}, 255, ${0.15 + Math.random() * 0.6})`,
+            animation: `twinkle ${2 + Math.random() * 5}s ease-in-out infinite`,
+            animationDelay: `${Math.random() * 3}s`,
+          }} />
+        ))}
+      </div>
+
+      {/* Central nebula glow */}
+      <div style={{
+        position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
+        width: '700px', height: '700px', pointerEvents: 'none',
+        background: 'radial-gradient(circle, rgba(100,60,200,0.06) 0%, rgba(0,180,255,0.03) 40%, transparent 70%)',
+        animation: 'pulseGlow 8s ease infinite',
+      }} />
+
+      {/* Header */}
+      <div style={{
+        position: 'absolute', top: '2.5rem', left: '50%', transform: 'translateX(-50%)',
+        textAlign: 'center', zIndex: 10, pointerEvents: 'none',
+      }}>
+        <div style={{
+          fontFamily: 'Space Mono, monospace', fontSize: '0.55rem', letterSpacing: '0.5em',
+          color: '#F5D28A', textTransform: 'uppercase', marginBottom: '0.5rem',
+          textShadow: '0 0 15px rgba(245,210,138,0.4)',
+        }}>
+          𝄞 Museum of Vibration
+        </div>
+        <h1 style={{
+          fontFamily: 'Cormorant Garamond, serif', fontSize: 'clamp(1.5rem, 3vw, 2.5rem)',
+          fontWeight: 200, color: 'rgba(255,255,255,0.85)', letterSpacing: '0.06em',
+        }}>
+          15 Exhibits — Drag to Explore
+        </h1>
+      </div>
+
+      {/* 3D Perspective Carousel */}
+      <div style={{
+        position: 'absolute', left: '50%', top: '52%',
+        transformStyle: 'preserve-3d',
+        perspective: '1200px',
+        pointerEvents: 'none',
+      }}>
+        <div style={{
+          transformStyle: 'preserve-3d',
+          transform: `translateX(-50%) rotateY(${carouselAngle}deg)`,
+          transition: isDraggingRef.current ? 'none' : undefined,
+        }}>
+          {EXHIBITS.map((ex, i) => {
+            const angle = i * cardAngle;
+            const isHovered = hoveredCard === i;
+            return (
+              <div
+                key={ex.id}
+                onMouseEnter={() => setHoveredCard(i)}
+                onMouseLeave={() => setHoveredCard(-1)}
+                onClick={(e) => { e.stopPropagation(); openExhibit(i); }}
+                style={{
+                  position: 'absolute',
+                  width: '200px',
+                  height: '260px',
+                  transformStyle: 'preserve-3d',
+                  transform: `rotateY(${angle}deg) translateZ(${radius}px) translateX(-100px) translateY(-130px)`,
+                  background: isHovered
+                    ? `linear-gradient(135deg, rgba(20,20,35,0.95) 0%, rgba(10,10,20,0.9) 100%)`
+                    : 'rgba(10, 10, 20, 0.75)',
+                  border: `1px solid ${isHovered ? ex.color + '66' : 'rgba(255,255,255,0.06)'}`,
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  cursor: 'pointer',
+                  pointerEvents: 'auto',
+                  transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                  boxShadow: isHovered
+                    ? `0 0 40px ${ex.color}22, 0 20px 60px rgba(0,0,0,0.6)`
+                    : '0 10px 40px rgba(0,0,0,0.4)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                }}
+              >
+                <div style={{
+                  fontSize: '2rem', marginBottom: '0.8rem',
+                  filter: isHovered ? `drop-shadow(0 0 10px ${ex.color})` : 'none',
+                  transition: 'filter 0.3s',
+                }}>
+                  {ex.icon}
+                </div>
+                <div style={{
+                  fontFamily: 'Cormorant Garamond, serif',
+                  fontSize: '1rem', fontWeight: 400,
+                  color: isHovered ? ex.color : 'rgba(255,255,255,0.85)',
+                  marginBottom: '0.5rem', transition: 'color 0.3s',
+                  lineHeight: 1.3,
+                }}>
+                  {ex.title}
+                </div>
+                <div style={{
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)',
+                  lineHeight: 1.5,
+                }}>
+                  {ex.sub}
+                </div>
+                {/* Bottom index */}
+                <div style={{
+                  position: 'absolute', bottom: '0.8rem',
+                  fontFamily: 'Space Mono, monospace', fontSize: '0.55rem',
+                  color: 'rgba(255,255,255,0.15)', letterSpacing: '0.15em',
+                }}>
+                  {String(i + 1).padStart(2, '0')}/15
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Bottom hint */}
+      <div style={{
+        position: 'absolute', bottom: '2.5rem', left: '50%', transform: 'translateX(-50%)',
+        textAlign: 'center', pointerEvents: 'none',
+      }}>
+        <span style={{
+          fontFamily: 'Space Mono, monospace', fontSize: '0.6rem', letterSpacing: '0.4em',
+          color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase',
+        }}>
+          ← Drag to Rotate · Click to Enter →
+        </span>
+      </div>
+
+      {/* Sound toggle */}
+      <button onClick={toggleSound} style={{
+        position: 'absolute', bottom: '2rem', right: '2rem',
+        background: 'rgba(255,255,255,0.05)', border: `1px solid ${soundOn ? 'rgba(245,210,138,0.3)' : 'rgba(255,0,85,0.3)'}`,
+        borderRadius: '50%', width: '44px', height: '44px', cursor: 'pointer',
+        color: soundOn ? '#F5D28A' : '#FF2D55', fontSize: '1.1rem',
+        boxShadow: soundOn ? '0 0 15px rgba(245,210,138,0.15)' : 'none',
+        zIndex: 10,
+      }}>
+        {soundOn ? '🔊' : '🔇'}
+      </button>
     </div>
   );
 }

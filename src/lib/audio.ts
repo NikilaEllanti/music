@@ -7,35 +7,54 @@ let masterGain: GainNode | null = null;
 let masterVolume = 1;
 let isUnlocked = false;
 
-export function getAudioContext(): AudioContext {
+export function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
   if (!audioCtx) {
-    const AC = window.AudioContext || (window as any).webkitAudioContext;
-    audioCtx = new AC();
-    masterGain = audioCtx.createGain();
-    masterGain.gain.value = masterVolume;
-    masterGain.connect(audioCtx.destination);
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AC) return null;
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = masterVolume;
+      masterGain.connect(audioCtx.destination);
+    } catch (e) {
+      console.error("AudioContext initialization failed:", e);
+      return null;
+    }
   }
   return audioCtx;
 }
 
-export function getMasterGain(): GainNode {
-  getAudioContext();
-  return masterGain!;
+export function getMasterGain(): GainNode | null {
+  const ctx = getAudioContext();
+  if (!ctx) return null;
+  return masterGain;
 }
 
 export async function ensureUnlocked() {
   if (isUnlocked) return;
   try {
     const ctx = getAudioContext();
-    if (ctx.state === 'suspended') await ctx.resume();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      // Race resume with a short timeout to prevent browser UI lockup if it blocks
+      await Promise.race([
+        ctx.resume(),
+        new Promise(resolve => setTimeout(resolve, 500))
+      ]);
+    }
     isUnlocked = true;
-  } catch {}
+  } catch (e) {
+    console.error("Audio unlock error caught:", e);
+  }
 }
 
 export function setMasterVolume(vol: number) {
   masterVolume = vol;
-  if (!masterGain) return;
-  masterGain.gain.setTargetAtTime(vol, getAudioContext().currentTime, 0.05);
+  const gain = getMasterGain();
+  const ctx = getAudioContext();
+  if (!gain || !ctx) return;
+  gain.gain.setTargetAtTime(vol, ctx.currentTime, 0.05);
 }
 
 // Hook for use in components
@@ -53,6 +72,8 @@ export function playNote(
 ) {
   try {
     const ctx = getAudioContext();
+    const mGain = getMasterGain();
+    if (!ctx || !mGain) return;
     if (ctx.state === 'suspended') ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -61,7 +82,7 @@ export function playNote(
     filter.frequency.value = Math.min(frequency * 6, 18000);
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(getMasterGain());
+    gain.connect(mGain);
     osc.type = type;
     osc.frequency.setValueAtTime(Math.max(frequency, 1), ctx.currentTime);
     gain.gain.setValueAtTime(0, ctx.currentTime);
@@ -91,6 +112,8 @@ export function startBlackHoleSynth() {
   if (blackHoleSynth) return;
   try {
     const ctx = getAudioContext();
+    const mGain = getMasterGain();
+    if (!ctx || !mGain) return;
     if (ctx.state === 'suspended') ctx.resume();
 
     const oscs: OscillatorNode[] = [];
@@ -110,7 +133,7 @@ export function startBlackHoleSynth() {
 
       osc.connect(filter);
       filter.connect(gain);
-      gain.connect(getMasterGain());
+      gain.connect(mGain);
       osc.start();
       oscs.push(osc);
       gains.push(gain);

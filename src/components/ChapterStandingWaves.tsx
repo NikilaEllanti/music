@@ -17,7 +17,7 @@ export default function ChapterStandingWaves() {
   
   const [activeHarmonic, setActiveHarmonic] = useState(1);
   const [showMath, setShowMath] = useState(false);
-  const [pluckIntensity, setPluckIntensity] = useState(0);
+  const pluckIntensityRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,8 +47,8 @@ export default function ChapterStandingWaves() {
       const cy = H / 2;
       const n = activeHarmonic;
 
-      // Damp pluck intensity over time
-      setPluckIntensity(p => Math.max(0, p * 0.96));
+      // Damp pluck intensity over time via ref
+      pluckIntensityRef.current = Math.max(0, pluckIntensityRef.current * 0.96);
 
       // Draw active standing wave
       ctx.strokeStyle = '#00FF88';
@@ -57,7 +57,7 @@ export default function ChapterStandingWaves() {
       ctx.lineWidth = 2.2;
       ctx.beginPath();
       
-      const amplitude = 30 * pluckIntensity + 8 * Math.sin(t * 2);
+      const amplitude = 30 * pluckIntensityRef.current + 8 * Math.sin(t * 2);
 
       for (let x = 0; x <= W; x += 3) {
         const factor = x / W;
@@ -108,11 +108,11 @@ export default function ChapterStandingWaves() {
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(animRef.current);
     };
-  }, [activeHarmonic, showMath, pluckIntensity]);
+  }, [activeHarmonic, showMath]);
 
   const pluckString = (h: number, freq: number) => {
     setActiveHarmonic(h);
-    setPluckIntensity(1.5);
+    pluckIntensityRef.current = 1.5;
     playNote(freq, 'triangle', 2.0, 0.15);
   };
 
