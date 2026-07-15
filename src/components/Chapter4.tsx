@@ -36,8 +36,7 @@ export default function Chapter4() {
       timeRef.current += 0.015;
       const t = timeRef.current;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      ctx.fillRect(0, 0, W, H);
+      ctx.clearRect(0, 0, W, H);
 
       // Draw standing waves for each harmonic
       const count = Math.min(visibleHarmonics || 1, HARMONICS.length);
@@ -98,7 +97,7 @@ export default function Chapter4() {
     <section
       id="chapter-4"
       className="chapter"
-      style={{ minHeight: '110vh', background: '#000410' }}
+      style={{ minHeight: '110vh', background: 'transparent' }}
     >
       <canvas
         ref={canvasRef}

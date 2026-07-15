@@ -125,8 +125,7 @@ export default function Chapter3() {
       timeRef.current += 0.012;
       const t = timeRef.current;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.12)';
-      ctx.fillRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
       const symbols = symbolsRef.current;
 
@@ -217,7 +216,7 @@ export default function Chapter3() {
     <section
       id="chapter-3"
       className="chapter"
-      style={{ minHeight: '110vh', background: '#000208' }}
+      style={{ minHeight: '110vh', background: 'transparent' }}
     >
       <canvas
         ref={canvasRef}

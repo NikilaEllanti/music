@@ -1,17 +1,50 @@
 'use client';
+// Comprehensive Web Audio API layer for all 15 exhibits
+// Zero React state - pure imperative
 
-import { useEffect, useRef, useCallback } from 'react';
-
-// Web Audio context singleton
 let audioCtx: AudioContext | null = null;
+let masterGain: GainNode | null = null;
+let masterVolume = 1;
+let isUnlocked = false;
 
 export function getAudioContext(): AudioContext {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const AC = window.AudioContext || (window as any).webkitAudioContext;
+    audioCtx = new AC();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = masterVolume;
+    masterGain.connect(audioCtx.destination);
   }
   return audioCtx;
 }
 
+export function getMasterGain(): GainNode {
+  getAudioContext();
+  return masterGain!;
+}
+
+export async function ensureUnlocked() {
+  if (isUnlocked) return;
+  try {
+    const ctx = getAudioContext();
+    if (ctx.state === 'suspended') await ctx.resume();
+    isUnlocked = true;
+  } catch {}
+}
+
+export function setMasterVolume(vol: number) {
+  masterVolume = vol;
+  if (!masterGain) return;
+  masterGain.gain.setTargetAtTime(vol, getAudioContext().currentTime, 0.05);
+}
+
+// Hook for use in components
+export function useAudioUnlock() {
+  if (typeof window === 'undefined') return;
+  // Handled externally by Enter button
+}
+
+// Play a single note with envelope
 export function playNote(
   frequency: number,
   type: OscillatorType = 'sine',
@@ -20,81 +53,122 @@ export function playNote(
 ) {
   try {
     const ctx = getAudioContext();
+    if (ctx.state === 'suspended') ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     const filter = ctx.createBiquadFilter();
-
     filter.type = 'lowpass';
-    filter.frequency.value = frequency * 4;
-
+    filter.frequency.value = Math.min(frequency * 6, 18000);
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
-
+    gain.connect(getMasterGain());
     osc.type = type;
-    osc.frequency.setValueAtTime(frequency, ctx.currentTime);
-
+    osc.frequency.setValueAtTime(Math.max(frequency, 1), ctx.currentTime);
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.05);
+    gain.gain.linearRampToValueAtTime(volume * masterVolume, ctx.currentTime + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-
     osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + duration + 0.1);
-  } catch {
-    // Audio not supported
-  }
+    osc.stop(ctx.currentTime + duration);
+  } catch {}
 }
 
-export function playChord(frequencies: number[], type: OscillatorType = 'sine') {
+// Play a chord (multiple simultaneous notes)
+export function playChord(
+  frequencies: number[],
+  type: OscillatorType = 'sine',
+  volume = 0.08,
+  duration = 1.2
+) {
   frequencies.forEach((f, i) => {
-    setTimeout(() => playNote(f, type, 2.5, 0.08), i * 60);
+    setTimeout(() => playNote(f, type, duration, volume), i * 30);
   });
 }
 
-// Note frequencies
-export const NOTE_FREQS: Record<string, number> = {
-  'C': 261.63, 'C#': 277.18, 'D': 293.66, 'D#': 311.13,
-  'E': 329.63, 'F': 349.23, 'F#': 369.99, 'G': 392.00,
-  'G#': 415.30, 'A': 440.00, 'A#': 466.16, 'B': 493.88,
-  'A2': 880.00, 'A3': 1320.00, 'A4': 1760.00, 'A5': 2200.00,
-  'Bb': 466.16, 'Eb': 311.13, 'Ab': 415.30, 'Db': 277.18, 'Gb': 369.99,
-};
+// Black hole synthesizer — continuous low rumble with LFO wobble
+let blackHoleSynth: { stop: () => void; updateProgress: (p: number) => void } | null = null;
 
-export const CIRCLE_OF_FIFTHS = ['C','G','D','A','E','B','Gb','Db','Ab','Eb','Bb','F'];
+export function startBlackHoleSynth() {
+  if (blackHoleSynth) return;
+  try {
+    const ctx = getAudioContext();
+    if (ctx.state === 'suspended') ctx.resume();
 
-export const RELATED_NOTES: Record<string, string[]> = {
-  'C': ['G', 'F', 'E', 'A'],
-  'G': ['D', 'C', 'B', 'E'],
-  'D': ['A', 'G', 'F#', 'B'],
-  'A': ['E', 'D', 'C#', 'G'],
-  'E': ['B', 'A', 'G#', 'D'],
-  'B': ['F#', 'E', 'D#', 'G#'],
-  'Gb': ['Db', 'B', 'Bb', 'Eb'],
-  'Db': ['Ab', 'Gb', 'F', 'Bb'],
-  'Ab': ['Eb', 'Db', 'G', 'F'],
-  'Eb': ['Bb', 'Ab', 'D', 'G'],
-  'Bb': ['F', 'Eb', 'A', 'D'],
-  'F': ['C', 'Bb', 'E', 'A'],
-};
+    const oscs: OscillatorNode[] = [];
+    const gains: GainNode[] = [];
 
-export function useAudioUnlock() {
-  const unlocked = useRef(false);
+    const freqs = [28, 41, 55, 73];
+    freqs.forEach(f => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 220;
 
-  const unlock = useCallback(() => {
-    if (unlocked.current) return;
-    try {
-      const ctx = getAudioContext();
-      if (ctx.state === 'suspended') ctx.resume();
-      unlocked.current = true;
-    } catch { /* ignore */ }
-  }, []);
+      osc.type = 'sawtooth';
+      osc.frequency.value = f;
+      gain.gain.value = 0.04 * masterVolume;
 
-  useEffect(() => {
-    window.addEventListener('click', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
-    return () => {
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('keydown', unlock);
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(getMasterGain());
+      osc.start();
+      oscs.push(osc);
+      gains.push(gain);
+    });
+
+    // Gravitational wave modulation
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.frequency.value = 0.18;
+    lfoGain.gain.value = 18;
+    lfo.connect(lfoGain);
+    oscs.forEach(o => lfoGain.connect(o.frequency));
+    lfo.start();
+
+    blackHoleSynth = {
+      stop: () => {
+        oscs.forEach(o => { try { o.stop(); } catch {} });
+        lfo.stop();
+        blackHoleSynth = null;
+      },
+      updateProgress: (p: number) => {
+        const now = ctx.currentTime;
+        gains.forEach((g, i) => {
+          const baseVol = 0.04 + p * 0.05;
+          g.gain.setTargetAtTime(baseVol * masterVolume, now, 0.3);
+        });
+        lfoGain.gain.setTargetAtTime(18 + p * 40, now, 0.5);
+        lfo.frequency.setTargetAtTime(0.18 + p * 0.5, now, 0.5);
+      }
     };
-  }, [unlock]);
+  } catch {}
 }
+
+export function stopBlackHoleSynth() {
+  blackHoleSynth?.stop();
+}
+
+export function updateBlackHoleSynthProgress(progress: number) {
+  blackHoleSynth?.updateProgress(progress);
+}
+
+// Musical note frequencies map
+export const NOTE_FREQ: Record<string, number> = {
+  C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.00, A3: 220.00, B3: 246.94,
+  C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+  C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00, B5: 987.77,
+  C6: 1046.50, D6: 1174.66, E6: 1318.51,
+};
+
+// C major scale frequencies
+export const C_MAJOR = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25];
+
+// Map frequency to HSL color (chromesthetic mapping)
+export function freqToColor(freq: number): string {
+  const semitone = Math.round(12 * Math.log2(freq / 261.63)) % 12;
+  const hue = (semitone * 30 + 200) % 360;
+  return `hsl(${hue}, 90%, 65%)`;
+}
+
+// Pentatonic minor scale
+export const PENTATONIC = [261.63, 311.13, 349.23, 392.00, 466.16, 523.25];

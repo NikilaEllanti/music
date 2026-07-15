@@ -31,8 +31,7 @@ export default function Chapter2() {
       const t = timeRef.current;
       const freq = freqRef.current;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
-      ctx.fillRect(0, 0, W, H);
+      ctx.clearRect(0, 0, W, H);
 
       // Normalized frequency (0..1)
       const normFreq = Math.min(freq / 440, 1);
@@ -106,7 +105,7 @@ export default function Chapter2() {
     <section
       id="chapter-2"
       className="chapter"
-      style={{ minHeight: '100vh', background: '#000505' }}
+      style={{ minHeight: '100vh', background: 'transparent' }}
     >
       <canvas
         ref={canvasRef}
