@@ -2,17 +2,21 @@
 import { useEffect, useRef } from 'react';
 import { playNote } from '@/lib/audio';
 
-// Exhibit 4: BLOOMING FLOWERS
-// Higher pitch = smaller petals. Lower pitch = large petals.
-// Chords create entire gardens.
+// Exhibit 4: BLOOMING FLOWERS (Sacred Geometry Generative Botany)
+// Music grows intricate, layered bioluminescent mandalas that pulse and breathe.
 
 interface Flower {
   x: number; y: number;
-  freq: number; // note frequency
-  hue: number; petalCount: number;
-  r: number; maxR: number; // current and target radius
-  bloom: number; // 0 to 1
-  age: number; swayPhase: number;
+  freq: number;
+  hue: number;
+  petalCount: number;
+  r: number;
+  maxR: number;
+  bloom: number;
+  age: number;
+  pulsePhase: number;
+  growthSpeed: number;
+  swaySpeed: number;
 }
 
 const FLOWER_NOTES: { label: string; freq: number; key: string }[] = [
@@ -44,165 +48,163 @@ export default function ExhibitFlower() {
     window.addEventListener('resize', resize);
 
     const spawnFlower = (x: number, y: number, freq: number) => {
-      const maxFreq = 800, minFreq = 100;
-      const t = (freq - minFreq) / (maxFreq - minFreq);
-      // Higher freq = smaller max radius, lower = bigger
-      const maxR = 80 - t * 55 + Math.random() * 10;
-      const petalCount = 5 + Math.round(t * 7); // more petals at higher pitch
-      const hue = (1 - t) * 120 + t * 280; // green at low, purple at high
-
+      // Map freq to size (lower freq = bigger, higher freq = smaller)
+      const t = (freq - 130) / 530; // 0 to 1
+      const maxR = 95 - clamp(t, 0, 1) * 65 + Math.random() * 12;
+      const petalCount = 6 + Math.floor(Math.random() * 4) * 2; // symmetric petals
+      const hue = 220 + Math.random() * 80; // beautiful cosmic blue-violet-pink range
+      
       flowersRef.current.push({
         x, y, freq, hue, petalCount,
-        r: 0, maxR, bloom: 0, age: 0,
-        swayPhase: Math.random() * Math.PI * 2,
+        r: 0, maxR,
+        bloom: 0,
+        age: 0,
+        pulsePhase: Math.random() * Math.PI * 2,
+        growthSpeed: 0.008 + Math.random() * 0.006,
+        swaySpeed: 0.3 + Math.random() * 0.7
       });
-      playNote(freq, 'sine', 1.4, 0.16);
+
+      playNote(freq, 'sine', 1.5, 0.1);
     };
 
-    // Click to plant flower at position
-    const onClick = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      // Map x to frequency
-      const t = x / canvas.width;
-      const freq = 130 + t * 700;
-      spawnFlower(x, y, freq);
-    };
+    const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
-    // Key presses for piano chord
+    // Keyboard controls
     const onKey = (e: KeyboardEvent) => {
       const note = FLOWER_NOTES.find(n => n.key === e.key.toLowerCase());
       if (note) {
         const W = canvas.width, H = canvas.height;
         const x = W * 0.15 + FLOWER_NOTES.indexOf(note) * (W * 0.1);
-        const y = H * 0.5 + (Math.random() - 0.5) * 120;
+        const y = H * 0.45 + (Math.random() - 0.5) * 100;
         spawnFlower(x, y, note.freq);
       }
+    };
+
+    // Click planting
+    const onClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      // Map horizontal location to note freq
+      const t = clickX / canvas.width;
+      const freq = 130 + t * 530;
+      spawnFlower(clickX, clickY, freq);
     };
 
     canvas.addEventListener('click', onClick);
     window.addEventListener('keydown', onKey);
 
-    // Auto bloom garden slowly
+    // Initial garden placement
     let autoIdx = 0;
-    const autoInterval = setInterval(() => {
+    const interval = setInterval(() => {
       const W = canvas.width, H = canvas.height;
-      const note = FLOWER_NOTES[autoIdx % FLOWER_NOTES.length];
-      const x = W * 0.1 + (autoIdx % 8) * (W * 0.11) + (Math.random() - 0.5) * 40;
+      const x = W * 0.2 + (autoIdx % 5) * (W * 0.15) + (Math.random() - 0.5) * 60;
       const y = H * 0.45 + (Math.random() - 0.5) * 80;
+      const note = FLOWER_NOTES[autoIdx % FLOWER_NOTES.length];
       spawnFlower(x, y, note.freq);
       autoIdx++;
-    }, 1000);
+    }, 1200);
 
-    const drawPetal = (ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, rx: number, ry: number, hue: number, alpha: number) => {
+    const drawPetal = (cx: number, cy: number, length: number, angle: number, hue: number, alpha: number) => {
       ctx.save();
-      ctx.translate(x, y);
+      ctx.translate(cx, cy);
       ctx.rotate(angle);
-      ctx.globalAlpha = alpha;
+      
+      const width = length * 0.38;
 
-      // Petal gradient
-      const grd = ctx.createRadialGradient(0, -ry * 0.3, 0, 0, -ry * 0.5, ry);
-      grd.addColorStop(0, `hsl(${hue + 20}, 80%, 85%)`);
-      grd.addColorStop(0.5, `hsl(${hue}, 75%, 65%)`);
-      grd.addColorStop(1, `hsl(${hue - 20}, 70%, 45%)`);
-
-      ctx.fillStyle = grd;
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = `hsl(${hue}, 80%, 65%)`;
-
-      // Petal shape (ellipse)
       ctx.beginPath();
-      ctx.ellipse(0, -ry * 0.5, rx, ry, 0, 0, Math.PI * 2);
+      ctx.moveTo(0, 0);
+      // Dual bezier curves for organic pointed petal
+      ctx.bezierCurveTo(-width, -length * 0.35, -width * 0.4, -length, 0, -length);
+      ctx.bezierCurveTo(width * 0.4, -length, width, -length * 0.35, 0, 0);
+      
+      const grd = ctx.createLinearGradient(0, 0, 0, -length);
+      grd.addColorStop(0, `hsla(${hue}, 95%, 70%, ${alpha * 0.85})`);
+      grd.addColorStop(0.5, `hsla(${hue + 30}, 90%, 65%, ${alpha * 0.6})`);
+      grd.addColorStop(1, `hsla(${hue + 60}, 100%, 80%, 0)`);
+      
+      ctx.fillStyle = grd;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = `hsl(${hue}, 90%, 65%)`;
       ctx.fill();
-
+      
       ctx.restore();
     };
 
     const draw = () => {
-      timeRef.current += 0.012;
+      timeRef.current += 0.01;
       const t = timeRef.current;
       const W = canvas.width, H = canvas.height;
 
-      ctx.fillStyle = 'rgba(2, 1, 10, 0.15)';
+      // Dark blue background clearing
+      ctx.fillStyle = 'rgba(2, 3, 10, 0.14)';
       ctx.fillRect(0, 0, W, H);
 
-      // Soft soil gradient at bottom
-      const soilGrd = ctx.createLinearGradient(0, H * 0.75, 0, H);
-      soilGrd.addColorStop(0, 'rgba(0,0,0,0)');
-      soilGrd.addColorStop(1, 'rgba(10, 5, 20, 0.4)');
-      ctx.fillStyle = soilGrd;
-      ctx.fillRect(0, H * 0.75, W, H * 0.25);
+      // Draw flowers
+      let i = 0;
+      while (i < flowersRef.current.length) {
+        const f = flowersRef.current[i];
+        f.age += 0.01;
+        f.bloom = Math.min(f.bloom + f.growthSpeed, 1);
+        f.r = f.bloom * f.maxR;
 
-      flowersRef.current.forEach(flower => {
-        flower.age += 0.015;
-        flower.bloom = Math.min(flower.bloom + 0.012, 1);
-        flower.r = flower.bloom * flower.maxR;
-
-        const sway = 0.06 * Math.sin(t * 1.2 + flower.swayPhase);
-        const bloomEase = flower.bloom * flower.bloom * (3 - 2 * flower.bloom); // smoothstep
+        // Breathe pulsation
+        const pulse = 1 + Math.sin(t * 2 + f.pulsePhase) * 0.04;
+        const currentR = f.r * pulse;
 
         ctx.save();
-        ctx.translate(flower.x, flower.y);
+        
+        // Sway in breeze
+        const sway = Math.sin(t * f.swaySpeed + f.pulsePhase) * 4;
+        ctx.translate(f.x + sway, f.y);
 
-        // Stem
-        const stemH = Math.min(flower.maxR * 1.4, 70) * bloomEase;
-        ctx.globalAlpha = bloomEase * 0.7;
-        ctx.strokeStyle = `hsl(120, 60%, 40%)`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(sway * 30, stemH * 0.5, 0, -stemH);
-        ctx.stroke();
+        // Draw layered geometric petals
+        for (let layer = 0; layer < 3; layer++) {
+          const layerR = currentR * (1 - layer * 0.28);
+          const layerAlpha = (1 - layer * 0.25) * f.bloom * 0.65;
+          const layerRotate = layer * 0.25 * Math.PI;
 
-        ctx.translate(sway * 15, -stemH);
-        ctx.rotate(sway);
-        ctx.globalAlpha = 1;
-
-        // Petals
-        for (let p = 0; p < flower.petalCount; p++) {
-          const angle = (p / flower.petalCount) * Math.PI * 2;
-          const rx = flower.r * 0.35 * bloomEase;
-          const ry = flower.r * 0.65 * bloomEase;
-          const petalHue = flower.hue + p * (360 / flower.petalCount) * 0.15;
-          drawPetal(ctx, 0, 0, angle, rx, ry, petalHue, 0.85 * bloomEase);
+          for (let p = 0; p < f.petalCount; p++) {
+            const angle = (p / f.petalCount) * Math.PI * 2 + layerRotate + Math.sin(t + f.pulsePhase) * 0.02;
+            drawPetal(0, 0, layerR, angle, f.hue, layerAlpha);
+          }
         }
 
-        // Center
-        const centerR = flower.r * 0.18 * bloomEase;
-        ctx.shadowBlur = 0;
-        const centerGrd = ctx.createRadialGradient(0, 0, 0, 0, 0, centerR);
-        centerGrd.addColorStop(0, `hsl(${flower.hue + 60}, 90%, 90%)`);
-        centerGrd.addColorStop(1, `hsl(${flower.hue + 30}, 80%, 60%)`);
-        ctx.globalAlpha = bloomEase;
-        ctx.fillStyle = centerGrd;
+        // Center glowing seed
         ctx.beginPath();
+        const centerR = currentR * 0.18;
+        const centerGrd = ctx.createRadialGradient(0, 0, 0, 0, 0, centerR);
+        centerGrd.addColorStop(0, '#ffffff');
+        centerGrd.addColorStop(0.4, `hsl(${f.hue}, 95%, 75%)`);
+        centerGrd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = centerGrd;
         ctx.arc(0, 0, centerR, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
-      });
 
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
-
-      // Trim old flowers
-      if (flowersRef.current.length > 60) {
-        flowersRef.current = flowersRef.current.slice(-40);
+        // Decay or clamp count
+        if (flowersRef.current.length > 35) {
+          flowersRef.current.shift();
+        } else {
+          i++;
+        }
       }
 
-      // Piano keyboard hint at bottom
+      ctx.shadowBlur = 0;
+
+      // Bottom keys styling
       const keyW = W / FLOWER_NOTES.length;
-      FLOWER_NOTES.forEach((note, i) => {
-        const kx = i * keyW + keyW * 0.5;
-        ctx.globalAlpha = 0.4;
-        ctx.fillStyle = `hsl(${(1 - i / FLOWER_NOTES.length) * 120 + (i / FLOWER_NOTES.length) * 280}, 70%, 60%)`;
-        ctx.fillRect(i * keyW, H - 36, keyW - 2, 36);
+      FLOWER_NOTES.forEach((note, idx) => {
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = `hsla(${200 + idx * 20}, 75%, 65%, 0.6)`;
+        ctx.fillRect(idx * keyW, H - 30, keyW - 2, 30);
         ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '600 0.62rem Space Grotesk, sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.font = '600 0.6rem Space Grotesk, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(note.key.toUpperCase(), kx, H - 14);
+        ctx.fillText(note.key.toUpperCase(), idx * keyW + keyW / 2, H - 12);
       });
       ctx.globalAlpha = 1;
 
@@ -215,21 +217,22 @@ export default function ExhibitFlower() {
       window.removeEventListener('resize', resize);
       window.removeEventListener('keydown', onKey);
       canvas.removeEventListener('click', onClick);
-      clearInterval(autoInterval);
+      clearInterval(interval);
       cancelAnimationFrame(animRef.current);
     };
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', cursor: 'crosshair' }} />
+    <div style={{ position: 'relative', width: '100%', height: '100%', background: '#030308' }}>
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       <div style={{
-        position: 'absolute', bottom: '3.5rem', left: '1.5rem',
-        fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.72rem', color: 'rgba(200,150,255,0.6)',
-        lineHeight: 1.7, pointerEvents: 'none',
+        position: 'absolute', bottom: '3.5rem', right: '1.5rem',
+        fontFamily: 'Space Mono, monospace', fontSize: '0.58rem',
+        color: 'rgba(204, 119, 255, 0.45)', lineHeight: 1.8, pointerEvents: 'none', textAlign: 'right',
       }}>
-        <div style={{ color: '#cc88ff', marginBottom: '0.3rem', fontWeight: 600 }}>🌸 BLOOMING FLOWERS</div>
-        Click anywhere · Use keys Q-I for piano notes · Low pitch = large petals
+        <div style={{ color: '#cc77ff', marginBottom: '0.2rem' }}>✿ BLOOMING FLOWERS</div>
+        <div>Sacred Geometry botany · L-System mandalas</div>
+        <div>Click or press keys Q-I to play and bloom</div>
       </div>
     </div>
   );

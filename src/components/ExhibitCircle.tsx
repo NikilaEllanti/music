@@ -22,10 +22,11 @@ export default function ExhibitCircleOfFifths() {
     const ctx = canvas.getContext('2d')!;
 
     const resize = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+      canvas.width  = canvas.offsetWidth  || 600;
+      canvas.height = canvas.offsetHeight || 600;
     };
-    resize();
+    // Defer resize to ensure layout is complete
+    requestAnimationFrame(resize);
     window.addEventListener('resize', resize);
 
     const getRadius = () => Math.min(canvas.width, canvas.height) * 0.38;
@@ -63,7 +64,9 @@ export default function ExhibitCircleOfFifths() {
       const cx = getCenterX(), cy = getCenterY();
       const R = getRadius();
 
-      ctx.fillStyle = 'rgba(2, 2, 12, 0.25)';
+      // Guard: skip draw if canvas has no size
+      if (W === 0 || H === 0) { animRef.current = requestAnimationFrame(draw); return; }
+      ctx.fillStyle = '#02020c';
       ctx.fillRect(0, 0, W, H);
 
       // Outer ring: major keys

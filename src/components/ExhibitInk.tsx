@@ -2,265 +2,261 @@
 import { useEffect, useRef } from 'react';
 import { playNote, freqToColor, PENTATONIC } from '@/lib/audio';
 
-// Exhibit 3: SMOKE & INK
-// Every note releases colored ink that diffuses and mixes permanently.
-// Inspired by the teal underwater ink/smoke image.
-
-interface InkBlob {
-  x: number; y: number;
-  vx: number; vy: number;
-  r: number; hue: number;
-  alpha: number; life: number;
-  type: 'blob' | 'tendril' | 'wisp';
-}
-
-interface InkTrail {
-  x: number; y: number;
-  px: number; py: number;
-  hue: number; alpha: number;
-}
+// Exhibit 3: SMOKE & INK — Perlin-noise flow-field ink diffusion
+// Ink follows a curl-noise velocity field, accumulates permanently on offscreen canvas
 
 export default function ExhibitInk() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
   const offscreenRef = useRef<HTMLCanvasElement | null>(null);
-  const animRef = useRef(0);
-  const timeRef = useRef(0);
-  const blobsRef = useRef<InkBlob[]>([]);
-  const trailsRef = useRef<InkTrail[]>([]);
-  const mouseRef = useRef({ x: 0, y: 0, px: 0, py: 0, down: false });
-  const lastNoteRef = useRef(0);
+  const animRef      = useRef(0);
+  const timeRef      = useRef(0);
+  const mouseRef     = useRef({ x: 0, y: 0, prev: { x: 0, y: 0 }, down: false });
+  const lastNoteRef  = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
-    const ctx = canvas.getContext('2d')!;
+    const ctx    = canvas.getContext('2d', { willReadFrequently: false })!;
 
-    // Persistent offscreen canvas where ink accumulates permanently
-    const offscreen = document.createElement('canvas');
-    offscreenRef.current = offscreen;
+    // Persistent accumulation canvas
+    const off    = document.createElement('canvas');
+    offscreenRef.current = off;
+    const octx   = off.getContext('2d')!;
 
     const resize = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-      offscreen.width = canvas.width;
-      offscreen.height = canvas.height;
-      // Fill offscreen with black
-      const octx = offscreen.getContext('2d')!;
+      const W = canvas.offsetWidth, H = canvas.offsetHeight;
+      canvas.width = W; canvas.height = H;
+      off.width = W; off.height = H;
       octx.fillStyle = '#010108';
-      octx.fillRect(0, 0, offscreen.width, offscreen.height);
+      octx.fillRect(0, 0, W, H);
     };
-
     resize();
     window.addEventListener('resize', resize);
 
-    const spawnInk = (x: number, y: number, hue: number, count = 25) => {
-      for (let i = 0; i < count; i++) {
+    // ── Hash / Noise helpers ───────────────────────────────────────────────
+    const hash2 = (x: number, y: number) =>
+      Math.sin(x * 127.1 + y * 311.7) * 43758.545 % 1;
+
+    const smoothNoise = (x: number, y: number) => {
+      const ix = Math.floor(x), iy = Math.floor(y);
+      const fx = x - ix, fy = y - iy;
+      const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+      const a = hash2(ix,   iy),   b = hash2(ix+1, iy);
+      const c = hash2(ix,   iy+1), d = hash2(ix+1, iy+1);
+      return a + (b-a)*ux + (c-a)*uy + (a-b-c+d)*ux*uy;
+    };
+
+    const fbm = (x: number, y: number, oct = 4) => {
+      let v = 0, a = 0.5, fx = x, fy = y;
+      for (let i = 0; i < oct; i++) {
+        v  += a * smoothNoise(fx, fy);
+        fx *= 2.1; fy *= 2.1 + 0.3;
+        a  *= 0.5;
+      }
+      return v;
+    };
+
+    // Curl noise: perpendicular gradient → incompressible flow field
+    const curl = (x: number, y: number, t: number, eps = 0.01) => {
+      const n  = fbm(x * 0.004 + t * 0.12,  y * 0.004 + t * 0.08);
+      const nx = fbm((x+eps) * 0.004 + t * 0.12, y * 0.004 + t * 0.08);
+      const ny = fbm(x * 0.004 + t * 0.12,  (y+eps) * 0.004 + t * 0.08);
+      return { vx: (ny - n) / eps, vy: -(nx - n) / eps };
+    };
+
+    // ── Ink particle pool ─────────────────────────────────────────────────
+    interface InkParticle {
+      x: number; y: number;
+      h: number; s: number; l: number;   // HSL
+      alpha: number; size: number; life: number; maxLife: number;
+      vx: number; vy: number;
+    }
+
+    const particles: InkParticle[] = [];
+    const MAX_PARTICLES = 800;
+
+    const spawnInk = (x: number, y: number, hue: number, count = 30) => {
+      for (let i = 0; i < count && particles.length < MAX_PARTICLES; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 0.5 + Math.random() * 3.5;
-        const type = Math.random() < 0.6 ? 'blob' :
-                     Math.random() < 0.7 ? 'tendril' : 'wisp';
-        blobsRef.current.push({
+        const speed = 0.3 + Math.random() * 2.5;
+        const ml    = 80 + Math.random() * 180;
+        particles.push({
           x, y,
+          h: hue + (Math.random() - 0.5) * 30,
+          s: 70 + Math.random() * 25,
+          l: 45 + Math.random() * 25,
+          alpha: 0.35 + Math.random() * 0.55,
+          size:  1.5 + Math.random() * 4.5,
+          life: 0, maxLife: ml,
           vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed - 1.2, // slight upward drift
-          r: type === 'blob' ? 4 + Math.random() * 12 :
-             type === 'tendril' ? 1.5 + Math.random() * 3 : 1,
-          hue: hue + (Math.random() - 0.5) * 30,
-          alpha: 0.5 + Math.random() * 0.5,
-          life: 1.0,
-          type,
+          vy: Math.sin(angle) * speed,
         });
       }
     };
 
-    // Mouse interaction
+    // Spawn initial ambient ink
+    const initInk = () => {
+      const W = canvas.width, H = canvas.height;
+      const initPositions = [
+        { x: W * 0.2, y: H * 0.35, hue: 185 },
+        { x: W * 0.75, y: H * 0.55, hue: 200 },
+        { x: W * 0.5,  y: H * 0.65, hue: 170 },
+      ];
+      for (const pos of initPositions) spawnInk(pos.x, pos.y, pos.hue, 40);
+    };
+    setTimeout(initInk, 100);
+
+    // ── Mouse events ──────────────────────────────────────────────────────
     const onMouseMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      mouseRef.current.px = mouseRef.current.x;
-      mouseRef.current.py = mouseRef.current.y;
+      mouseRef.current.prev = { x: mouseRef.current.x, y: mouseRef.current.y };
       mouseRef.current.x = e.clientX - rect.left;
       mouseRef.current.y = e.clientY - rect.top;
 
       if (mouseRef.current.down) {
-        const now = Date.now();
-        if (now - lastNoteRef.current > 150) {
-          lastNoteRef.current = now;
+        const now = performance.now();
+        if (now - lastNoteRef.current > 80) {
           const noteIdx = Math.floor(Math.random() * PENTATONIC.length);
-          const freq = PENTATONIC[noteIdx];
-          playNote(freq, 'sine', 0.6, 0.1);
-          const hue = (noteIdx * 50 + timeRef.current * 30) % 360;
-          spawnInk(mouseRef.current.x, mouseRef.current.y, hue, 30);
+          const freq    = PENTATONIC[noteIdx];
+          playNote(freq, 'sine', 0.7, 0.06);
+          const hue = ((freq - 260) / 280) * 180 + 160;
+          spawnInk(mouseRef.current.x, mouseRef.current.y, hue, 18);
+          lastNoteRef.current = now;
         }
-
-        trailsRef.current.push({
-          x: mouseRef.current.x, y: mouseRef.current.y,
-          px: mouseRef.current.px, py: mouseRef.current.py,
-          hue: (timeRef.current * 40) % 360, alpha: 0.4,
-        });
       }
     };
-
-    const onMouseDown = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent) => {
       mouseRef.current.down = true;
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      mouseRef.current.x = e.clientX - rect.left;
+      mouseRef.current.y = e.clientY - rect.top;
       const noteIdx = Math.floor(Math.random() * PENTATONIC.length);
-      const freq = PENTATONIC[noteIdx];
-      playNote(freq, 'sine', 1.0, 0.16);
-      const hue = (noteIdx * 50) % 360;
-      spawnInk(x, y, hue, 50);
+      const freq    = PENTATONIC[noteIdx];
+      playNote(freq, 'sine', 1.0, 0.1);
+      const hue = ((freq - 260) / 280) * 180 + 160;
+      spawnInk(mouseRef.current.x, mouseRef.current.y, hue, 40);
     };
-
-    const onMouseUp = () => { mouseRef.current.down = false; };
-
-    // Also spawn on click for single note
-    const onClick = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const noteIdx = Math.floor(Math.random() * PENTATONIC.length);
-      const freq = PENTATONIC[noteIdx];
-      playNote(freq, 'sine', 1.0, 0.18);
-      const hue = (noteIdx * 50 + 180) % 360;
-      spawnInk(x, y, hue, 60);
-    };
+    const onUp = () => { mouseRef.current.down = false; };
 
     canvas.addEventListener('mousemove', onMouseMove);
-    canvas.addEventListener('mousedown', onMouseDown);
-    canvas.addEventListener('mouseup', onMouseUp);
-    canvas.addEventListener('click', onClick);
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mouseup',   onUp);
 
-    // Auto spawn ambient ink drips
-    const autoInterval = setInterval(() => {
-      const W = canvas.width, H = canvas.height;
-      const x = Math.random() * W;
-      const y = Math.random() * H * 0.3;
-      const hue = (timeRef.current * 20) % 360;
-      spawnInk(x, y, hue, 12);
-      playNote(PENTATONIC[Math.floor(Math.random() * PENTATONIC.length)], 'sine', 0.8, 0.04);
-    }, 1200);
+    // ── Periodic ambient spawning ─────────────────────────────────────────
+    let lastSpawn = 0;
 
     const draw = () => {
-      timeRef.current += 0.01;
-      const t = timeRef.current;
+      timeRef.current += 1;
+      const t = timeRef.current * 0.01;
       const W = canvas.width, H = canvas.height;
 
-      const octx = offscreen.getContext('2d')!;
+      // Ambient spawn
+      if (timeRef.current - lastSpawn > 60 && particles.length < MAX_PARTICLES * 0.6) {
+        const hue = 170 + Math.random() * 40;
+        spawnInk(Math.random() * W, Math.random() * H * 0.8 + H * 0.1, hue, 8);
+        lastSpawn = timeRef.current;
+      }
 
-      // Draw trails permanently onto offscreen
-      trailsRef.current.forEach(trail => {
-        octx.strokeStyle = `hsla(${trail.hue}, 80%, 65%, ${trail.alpha})`;
-        octx.lineWidth = 2;
-        octx.lineCap = 'round';
-        octx.beginPath();
-        octx.moveTo(trail.px, trail.py);
-        octx.lineTo(trail.x, trail.y);
-        octx.stroke();
-      });
-      trailsRef.current = [];
+      // ── Render particles to offscreen ─────────────────────────────────
+      let i = 0;
+      while (i < particles.length) {
+        const p = particles[i];
 
-      // Render blobs and stamp onto offscreen
-      blobsRef.current.forEach(blob => {
-        blob.x += blob.vx;
-        blob.y += blob.vy;
-        blob.vx *= 0.97;
-        blob.vy = blob.vy * 0.97 - 0.02; // rising
+        // Flow field velocity
+        const { vx: fx, vy: fy } = curl(p.x, p.y, t);
+        p.vx += fx * 0.12;
+        p.vy += fy * 0.12;
+        // Drag
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+        // Gravity nudge
+        p.vy += 0.015;
 
-        // Turbulence
-        blob.vx += (Math.random() - 0.5) * 0.15;
-        blob.vy += (Math.random() - 0.5) * 0.08;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life++;
 
-        blob.life -= 0.008;
-        if (blob.life <= 0) return;
+        const progress = p.life / p.maxLife;
+        const fade     = progress < 0.15
+          ? progress / 0.15
+          : 1 - (progress - 0.15) / 0.85;
+        const alpha    = p.alpha * fade;
+        const size     = p.size * (1 + progress * 0.5);
 
-        const alpha = blob.alpha * blob.life;
-
-        if (blob.type === 'blob') {
-          const grd = octx.createRadialGradient(blob.x, blob.y, 0, blob.x, blob.y, blob.r);
-          grd.addColorStop(0, `hsla(${blob.hue}, 90%, 70%, ${alpha})`);
-          grd.addColorStop(0.5, `hsla(${blob.hue}, 80%, 55%, ${alpha * 0.5})`);
-          grd.addColorStop(1, `hsla(${blob.hue}, 70%, 40%, 0)`);
+        if (alpha > 0.005) {
+          octx.beginPath();
+          const grd = octx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size);
+          grd.addColorStop(0, `hsla(${p.h},${p.s}%,${p.l}%,${alpha})`);
+          grd.addColorStop(1, `hsla(${p.h},${p.s}%,${p.l - 10}%,0)`);
           octx.fillStyle = grd;
-          octx.beginPath();
-          octx.arc(blob.x, blob.y, blob.r * 2, 0, Math.PI * 2);
-          octx.fill();
-        } else if (blob.type === 'tendril') {
-          octx.strokeStyle = `hsla(${blob.hue}, 85%, 65%, ${alpha * 0.8})`;
-          octx.lineWidth = blob.r * 0.5;
-          octx.lineCap = 'round';
-          octx.shadowBlur = 8;
-          octx.shadowColor = `hsl(${blob.hue}, 90%, 65%)`;
-          octx.beginPath();
-          octx.moveTo(blob.x - blob.vx * 3, blob.y - blob.vy * 3);
-          octx.lineTo(blob.x, blob.y);
-          octx.stroke();
-          octx.shadowBlur = 0;
-        } else { // wisp
-          octx.fillStyle = `hsla(${blob.hue}, 100%, 80%, ${alpha * 0.6})`;
-          octx.beginPath();
-          octx.arc(blob.x, blob.y, blob.r * 1.5, 0, Math.PI * 2);
+          octx.arc(p.x, p.y, size, 0, Math.PI * 2);
           octx.fill();
         }
-      });
 
-      blobsRef.current = blobsRef.current.filter(b => b.life > 0);
-      if (blobsRef.current.length > 3000) blobsRef.current = blobsRef.current.slice(-1500);
-
-      // Compose: draw offscreen ink (persistent) onto main canvas
-      ctx.globalAlpha = 1;
-      ctx.drawImage(offscreen, 0, 0);
-
-      // Add live glowing wisps on top
-      blobsRef.current.forEach(blob => {
-        if (blob.type === 'blob' && blob.life > 0.5) {
-          ctx.globalAlpha = blob.life * 0.3;
-          ctx.fillStyle = `hsl(${blob.hue}, 90%, 75%)`;
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = `hsl(${blob.hue}, 90%, 65%)`;
-          ctx.beginPath();
-          ctx.arc(blob.x, blob.y, blob.r * 0.5, 0, Math.PI * 2);
-          ctx.fill();
+        if (p.life >= p.maxLife || p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) {
+          particles.splice(i, 1);
+        } else {
+          i++;
         }
-      });
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
+      }
 
-      // Ambient light rays from top
-      for (let i = 0; i < 3; i++) {
-        const rx = W * (0.2 + i * 0.3);
-        const rayGrd = ctx.createLinearGradient(rx, 0, rx, H * 0.4);
-        rayGrd.addColorStop(0, 'rgba(0, 220, 255, 0.04)');
-        rayGrd.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = rayGrd;
-        ctx.fillRect(rx - 20, 0, 40, H * 0.4);
+      // ── Compose to display canvas ─────────────────────────────────────
+      // Very slightly fade the offscreen to let old ink slowly dissipate
+      octx.fillStyle = 'rgba(1,1,8,0.004)';
+      octx.fillRect(0, 0, W, H);
+
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(off, 0, 0);
+
+      // Live particle glow on top
+      for (const p of particles) {
+        const progress = p.life / p.maxLife;
+        const fade     = progress < 0.15 ? progress / 0.15 : 1 - (progress - 0.15) / 0.85;
+        if (fade < 0.05) continue;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${p.h},90%,80%,${p.alpha * fade * 0.4})`;
+        ctx.shadowBlur  = 8;
+        ctx.shadowColor = `hsla(${p.h},90%,70%,0.5)`;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // ── Instruction overlay ────────────────────────────────────────────
+      if (timeRef.current < 160) {
+        const oa = timeRef.current > 120 ? 1 - (timeRef.current - 120) / 40 : 1;
+        ctx.fillStyle = `rgba(140,200,255,${oa * 0.45})`;
+        ctx.font = '0.72rem Space Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Click and drag to release ink', W / 2, H - 28);
       }
 
       animRef.current = requestAnimationFrame(draw);
     };
 
     draw();
-
     return () => {
       window.removeEventListener('resize', resize);
       canvas.removeEventListener('mousemove', onMouseMove);
-      canvas.removeEventListener('mousedown', onMouseDown);
-      canvas.removeEventListener('mouseup', onMouseUp);
-      canvas.removeEventListener('click', onClick);
-      clearInterval(autoInterval);
+      canvas.removeEventListener('mousedown', onDown);
+      canvas.removeEventListener('mouseup',   onUp);
       cancelAnimationFrame(animRef.current);
     };
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', cursor: 'crosshair' }} />
+    <div style={{ position: 'relative', width: '100%', height: '100%', background: '#010108' }}>
+      <canvas
+        ref={canvasRef}
+        style={{ width: '100%', height: '100%', display: 'block', cursor: 'crosshair' }}
+      />
       <div style={{
-        position: 'absolute', bottom: '1.5rem', left: '1.5rem',
-        fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.72rem', color: 'rgba(0,220,255,0.6)',
-        lineHeight: 1.7, pointerEvents: 'none',
+        position: 'absolute', bottom: '1.5rem', right: '1.5rem',
+        fontFamily: 'Space Mono, monospace', fontSize: '0.58rem',
+        color: 'rgba(0,229,255,0.4)', lineHeight: 1.8, pointerEvents: 'none', textAlign: 'right',
       }}>
-        <div style={{ color: '#00dcff', marginBottom: '0.3rem', fontWeight: 600 }}>🌊 SMOKE & INK</div>
-        Click or drag to release ink · Every note stains the universe permanently
+        <div style={{ color: '#00e5ff', marginBottom: '0.2rem' }}>◬ SMOKE & INK</div>
+        <div>Curl-noise flow field · Permanent diffusion</div>
+        <div>Click & drag to paint</div>
       </div>
     </div>
   );

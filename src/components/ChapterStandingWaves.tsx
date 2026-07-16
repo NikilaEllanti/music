@@ -25,10 +25,10 @@ export default function ChapterStandingWaves() {
     const ctx = canvas.getContext('2d')!;
 
     const resize = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+      canvas.width  = canvas.offsetWidth  || 800;
+      canvas.height = canvas.offsetHeight || 400;
     };
-    resize();
+    requestAnimationFrame(resize);
     window.addEventListener('resize', resize);
 
     const draw = () => {

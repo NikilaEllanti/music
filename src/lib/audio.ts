@@ -105,7 +105,7 @@ export function playChord(
   });
 }
 
-// Black hole synthesizer — continuous low rumble with LFO wobble
+// Black hole synthesizer — procedural cavernous rumble mimicking the NASA Perseus recording
 let blackHoleSynth: { stop: () => void; updateProgress: (p: number) => void } | null = null;
 
 export function startBlackHoleSynth() {
@@ -116,53 +116,114 @@ export function startBlackHoleSynth() {
     if (!ctx || !mGain) return;
     if (ctx.state === 'suspended') ctx.resume();
 
-    const oscs: OscillatorNode[] = [];
-    const gains: GainNode[] = [];
+    // ── Generate Procedural White Noise Buffer ──
+    const bufferSize = ctx.sampleRate * 4; // 4 seconds of noise
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
 
-    const freqs = [28, 41, 55, 73];
-    freqs.forEach(f => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 220;
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = buffer;
+    noiseSource.loop = true;
 
-      osc.type = 'sawtooth';
-      osc.frequency.value = f;
-      gain.gain.value = 0.04 * masterVolume;
+    // Resonant bandpass sweep 1 (haunting gas wind)
+    const bp1 = ctx.createBiquadFilter();
+    bp1.type = 'bandpass';
+    bp1.frequency.value = 55;
+    bp1.Q.value = 8.0;
 
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(mGain);
-      osc.start();
-      oscs.push(osc);
-      gains.push(gain);
-    });
+    // Resonant bandpass sweep 2 (hollow upper harmonics)
+    const bp2 = ctx.createBiquadFilter();
+    bp2.type = 'bandpass';
+    bp2.frequency.value = 110;
+    bp2.Q.value = 6.0;
 
-    // Gravitational wave modulation
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
-    lfo.frequency.value = 0.18;
-    lfoGain.gain.value = 18;
-    lfo.connect(lfoGain);
-    oscs.forEach(o => lfoGain.connect(o.frequency));
-    lfo.start();
+    // Master deep low-pass to eliminate harsh hiss
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 140;
+    lp.Q.value = 1.0;
+
+    // Deep sub-bass carrier (17Hz Perseus frequency)
+    const subOsc = ctx.createOscillator();
+    subOsc.type = 'sine';
+    subOsc.frequency.value = 17;
+
+    const subGain = ctx.createGain();
+    subGain.gain.value = 0.08 * masterVolume;
+
+    const mainGain = ctx.createGain();
+    mainGain.gain.value = 0.12 * masterVolume;
+
+    // Cavernous space echo delay
+    const delay = ctx.createDelay(2.0);
+    const feedback = ctx.createGain();
+    delay.delayTime.value = 0.75;
+    feedback.gain.value = 0.45;
+
+    // Connections
+    noiseSource.connect(bp1);
+    noiseSource.connect(bp2);
+    bp1.connect(lp);
+    bp2.connect(lp);
+    
+    // Connect to cavernous delay loop
+    lp.connect(mainGain);
+    mainGain.connect(delay);
+    delay.connect(feedback);
+    feedback.connect(delay);
+    
+    // Connect everything to master output
+    mainGain.connect(mGain);
+    delay.connect(mGain);
+
+    subOsc.connect(subGain);
+    subGain.connect(mGain);
+
+    // Start audio
+    noiseSource.start(0);
+    subOsc.start(0);
+
+    // Slow pressure wave modulation LFOs (modulate filter cutoffs)
+    const lfo1 = ctx.createOscillator();
+    lfo1.type = 'sine';
+    lfo1.frequency.value = 0.04; // ultra slow
+
+    const lfo1Gain = ctx.createGain();
+    lfo1Gain.gain.value = 25; // sweep range
+    lfo1.connect(lfo1Gain);
+    lfo1Gain.connect(bp1.frequency);
+    lfo1.start();
+
+    const lfo2 = ctx.createOscillator();
+    lfo2.type = 'sine';
+    lfo2.frequency.value = 0.07;
+
+    const lfo2Gain = ctx.createGain();
+    lfo2Gain.gain.value = 45;
+    lfo2.connect(lfo2Gain);
+    lfo2Gain.connect(bp2.frequency);
+    lfo2.start();
 
     blackHoleSynth = {
       stop: () => {
-        oscs.forEach(o => { try { o.stop(); } catch {} });
-        lfo.stop();
+        try {
+          noiseSource.stop();
+          subOsc.stop();
+          lfo1.stop();
+          lfo2.stop();
+        } catch {}
         blackHoleSynth = null;
       },
       updateProgress: (p: number) => {
         const now = ctx.currentTime;
-        gains.forEach((g, i) => {
-          const baseVol = 0.04 + p * 0.05;
-          g.gain.setTargetAtTime(baseVol * masterVolume, now, 0.3);
-        });
-        lfoGain.gain.setTargetAtTime(18 + p * 40, now, 0.5);
-        lfo.frequency.setTargetAtTime(0.18 + p * 0.5, now, 0.5);
-      }
+        // Make the rumble build up in presence based on distance
+        mainGain.gain.setTargetAtTime((0.12 + p * 0.15) * masterVolume, now, 0.4);
+        subGain.gain.setTargetAtTime((0.08 + p * 0.08) * masterVolume, now, 0.3);
+        lp.frequency.setTargetAtTime(140 + p * 120, now, 0.5);
+      },
     };
   } catch {}
 }

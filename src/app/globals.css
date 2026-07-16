@@ -3,21 +3,22 @@
 @import "tailwindcss";
 
 :root {
-  --bg-cosmic: #050507;
-  --bg-deep: #0E0F14;
+  --bg-cosmic: #030308;
+  --bg-deep: #080810;
   --gold: #F5D28A;
-  --purple: #1A1C2A;
-  --blue-dusk: #0F1B2A;
-  --teal-nebula: #0E1F22;
-  --aurora-green: #00FF88;
-  --aurora-teal: #00FFFF;
-  --aurora-purple: #B026FF;
+  --electric-blue: #1a3fff;
+  --deep-blue: #0a0a2e;
+  --nebula-purple: #2a0a4a;
+  --aurora-green: #00ff99;
+  --aurora-teal: #00e5ff;
+  --aurora-purple: #9b30ff;
   --white: #F5F6F8;
-  --white-dim: rgba(245, 246, 248, 0.5);
-  
-  --glow-gold: 0 0 20px rgba(245, 210, 138, 0.4), 0 0 40px rgba(245, 210, 138, 0.15);
-  --glow-teal: 0 0 20px rgba(0, 255, 255, 0.4), 0 0 40px rgba(0, 255, 255, 0.15);
-  --glow-green: 0 0 20px rgba(0, 255, 136, 0.45), 0 0 40px rgba(0, 255, 136, 0.2);
+  --white-dim: rgba(245, 246, 248, 0.45);
+
+  --glow-gold: 0 0 20px rgba(245, 210, 138, 0.35), 0 0 60px rgba(245, 210, 138, 0.1);
+  --glow-blue: 0 0 20px rgba(0, 100, 255, 0.4), 0 0 60px rgba(0, 50, 200, 0.15);
+  --glow-teal: 0 0 20px rgba(0, 229, 255, 0.4), 0 0 60px rgba(0, 229, 255, 0.1);
+  --glow-green: 0 0 20px rgba(0, 255, 153, 0.4), 0 0 60px rgba(0, 255, 153, 0.1);
 }
 
 * {
@@ -26,75 +27,114 @@
   padding: 0;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background-color: var(--bg-cosmic);
   color: var(--white);
   font-family: 'Space Grotesk', sans-serif;
   font-weight: 300;
   overflow-x: hidden;
-  cursor: default;
+  cursor: none;
 }
 
+/* ─── Custom Cursor ─── */
+#cursor-dot {
+  position: fixed;
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s, height 0.2s, background 0.2s;
+  mix-blend-mode: difference;
+}
+
+#cursor-ring {
+  position: fixed;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(245, 210, 138, 0.5);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99998;
+  transform: translate(-50%, -50%);
+  transition: transform 0.12s ease-out, width 0.25s, height 0.25s, border-color 0.25s, opacity 0.25s;
+}
+
+body:hover #cursor-ring {
+  opacity: 1;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: var(--bg-cosmic); }
+::-webkit-scrollbar-thumb { background: rgba(245, 210, 138, 0.3); border-radius: 2px; }
+
+/* ─── Keyframes ─── */
 @keyframes twinkle {
-  0%, 100% { opacity: 0.15; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.3); }
+  0%, 100% { opacity: 0.1; transform: scale(0.7); }
+  50% { opacity: 0.9; transform: scale(1.2); }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-15px); }
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-18px); }
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg-cosmic);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--gold);
-  border-radius: 2px;
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.08); }
 }
 
-/* Custom cursor */
-.cursor {
-  position: fixed;
-  width: 8px;
-  height: 8px;
-  background: var(--gold);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9999;
-  mix-blend-mode: screen;
-  box-shadow: var(--glow-gold);
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.cursor-ring {
-  position: fixed;
-  width: 32px;
-  height: 32px;
-  border: 1px solid rgba(245, 210, 138, 0.3);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9998;
-  transition: transform 0.1s ease, width 0.3s, height 0.3s;
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
 }
 
-/* Premium Buttons - Cosmic Gravity style */
+@keyframes waveShimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+  100% { opacity: 0.4; }
+}
+
+@keyframes mathReveal {
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes exhibitReveal {
+  from { opacity: 0; transform: scale(0.97) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes aurora-wave {
+  0%, 100% { transform: skewX(0deg) scaleY(1); }
+  25% { transform: skewX(2deg) scaleY(1.05); }
+  75% { transform: skewX(-2deg) scaleY(0.95); }
+}
+
+/* ─── Buttons ─── */
 .btn-primary {
   padding: 0.8rem 2.2rem;
-  border: 1px solid var(--gold);
-  background: rgba(245, 210, 138, 0.03);
+  border: 1px solid rgba(245, 210, 138, 0.4);
+  background: rgba(245, 210, 138, 0.04);
   color: var(--gold);
   font-family: 'Space Mono', monospace;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   border-radius: 100px;
   cursor: pointer;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 0 10px rgba(245, 210, 138, 0.05);
 }
 
 .btn-primary:hover {
@@ -103,136 +143,24 @@ body {
   transform: translateY(-2px);
 }
 
-.btn-secondary {
-  padding: 0.8rem 2.2rem;
-  border: 1px solid rgba(245, 246, 248, 0.15);
-  background: transparent;
-  color: var(--white);
-  font-family: 'Space Mono', monospace;
-  font-size: 0.75rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  border-radius: 100px;
-  cursor: pointer;
-  transition: all 0.4s;
-}
-
-.btn-secondary:hover {
-  border-color: var(--white);
-  background: rgba(255,255,255,0.05);
-}
-
-/* Premium Glass Cards */
+/* ─── Cards ─── */
 .cosmic-card {
-  background: rgba(14, 15, 20, 0.55);
-  border: 1px solid rgba(245, 210, 138, 0.08);
+  background: rgba(8, 8, 16, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: 16px;
   padding: 2.2rem;
   transition: all 0.4s ease;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .cosmic-card:hover {
-  border-color: rgba(245, 210, 138, 0.25);
-  box-shadow: 0 15px 50px rgba(245, 210, 138, 0.06);
-  transform: translateY(-4px);
+  border-color: rgba(245, 210, 138, 0.18);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(245,210,138,0.04);
 }
 
-/* Navigation */
-.nav-cosmic {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  padding: 1.8rem 3.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.nav-title {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 500;
-  font-size: 1.1rem;
-  letter-spacing: 0.25em;
-  color: var(--gold);
-  text-shadow: var(--glow-gold);
-}
-
-.nav-links {
-  display: flex;
-  gap: 2.2rem;
-  list-style: none;
-}
-
-.nav-links a {
-  font-family: 'Space Mono', monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.15em;
-  color: var(--white-dim);
-  text-decoration: none;
-  text-transform: uppercase;
-  transition: all 0.3s;
-}
-
-.nav-links a:hover,
-.nav-links a.active {
-  color: var(--gold);
-  text-shadow: var(--glow-gold);
-}
-
-/* Slider Custom Styling */
-input[type="range"].cosmic-slider {
-  -webkit-appearance: none;
-  width: 100%;
-  height: 2px;
-  background: rgba(245, 246, 248, 0.15);
-  outline: none;
-  border-radius: 1px;
-}
-
-input[type="range"].cosmic-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--gold);
-  cursor: pointer;
-  box-shadow: var(--glow-gold);
-  transition: transform 0.1s;
-}
-
-input[type="range"].cosmic-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.3);
-}
-
-/* Math Equation Fade/Transition */
-.math-equation {
-  font-family: 'Space Mono', monospace;
-  color: var(--gold);
-  text-shadow: var(--glow-gold);
-  background: rgba(245, 210, 138, 0.04);
-  border: 1px dashed rgba(245, 210, 138, 0.2);
-  padding: 1.2rem;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  margin: 1.5rem 0;
-  display: inline-block;
-  opacity: 0;
-  transform: scale(0.95);
-  animation: mathReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes mathReveal {
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* Chapters layout spacing */
+/* ─── Chapter Layout ─── */
 .chapter-container {
   min-height: 100vh;
   display: flex;
@@ -253,16 +181,70 @@ input[type="range"].cosmic-slider::-webkit-slider-thumb:hover {
   align-items: center;
 }
 
+.chapter-num {
+  font-family: 'Space Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.8rem;
+}
+
+.chapter-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 300;
+  font-size: 2.8rem;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  margin-bottom: 1.4rem;
+}
+
+/* ─── Math Equation ─── */
+.math-equation {
+  font-family: 'Space Mono', monospace;
+  color: var(--gold);
+  text-shadow: var(--glow-gold);
+  background: rgba(245, 210, 138, 0.04);
+  border: 1px dashed rgba(245, 210, 138, 0.2);
+  padding: 1.2rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  margin: 1.5rem 0;
+  display: inline-block;
+  opacity: 0;
+  transform: scale(0.97);
+  animation: mathReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ─── Range Slider ─── */
+input[type="range"].cosmic-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.1);
+  outline: none;
+  border-radius: 1px;
+}
+
+input[type="range"].cosmic-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--gold);
+  cursor: pointer;
+  box-shadow: var(--glow-gold);
+}
+
+/* ─── Exhibit Reveal ─── */
+.exhibit-reveal {
+  animation: exhibitReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @media (max-width: 968px) {
   .chapter-inner {
     grid-template-columns: 1fr;
     gap: 2.5rem;
     text-align: center;
-  }
-  .nav-cosmic {
-    padding: 1.2rem 2rem;
-  }
-  .nav-links {
-    display: none;
   }
 }

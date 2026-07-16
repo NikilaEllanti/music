@@ -3,24 +3,28 @@ import { useEffect, useRef } from 'react';
 import { playNote, freqToColor, C_MAJOR } from '@/lib/audio';
 
 // Exhibit 2: GROWING SONIC FOREST
-// Each note creates a branch. Harmony grows flowers. Rhythm grows leaves.
-// Inspired by the blue luminescent fractal tree image.
+// Bioluminescent fractal tree with physics-based glowing particles that sway with wind.
+// Music grows new twigs and blooms floating stardust flowers.
 
 interface Branch {
   x1: number; y1: number;
   x2: number; y2: number;
-  angle: number; depth: number;
-  width: number; hue: number; alpha: number;
-  age: number; growthTarget: number;
-  growth: number; // 0 to 1
+  angle: number;
+  length: number;
+  width: number;
+  depth: number;
+  currentLength: number;
 }
 
-interface Flower {
-  x: number; y: number; r: number; hue: number; alpha: number; age: number; petals: number;
-}
-
-interface Leaf {
-  x: number; y: number; angle: number; size: number; hue: number; alpha: number; age: number;
+interface Particle {
+  x: number; y: number;
+  vx: number; vy: number;
+  r: number;
+  hue: number;
+  alpha: number;
+  life: number;
+  maxLife: number;
+  type: 'leaf' | 'flower' | 'glow';
 }
 
 export default function ExhibitForest() {
@@ -28,10 +32,7 @@ export default function ExhibitForest() {
   const animRef = useRef(0);
   const timeRef = useRef(0);
   const branchesRef = useRef<Branch[]>([]);
-  const flowersRef = useRef<Flower[]>([]);
-  const leavesRef = useRef<Leaf[]>([]);
-  const rootX = useRef(0);
-  const rootY = useRef(0);
+  const particlesRef = useRef<Particle[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -40,194 +41,180 @@ export default function ExhibitForest() {
     const resize = () => {
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
-      rootX.current = canvas.width / 2;
-      rootY.current = canvas.height - 20;
-      // Reset to trunk
-      branchesRef.current = [];
-      growBranch(rootX.current, rootY.current, -Math.PI / 2, 80, 8, 200, 0);
+      generateTreeBase();
     };
 
-    // Recursive fractal branch spawner
-    const growBranch = (x: number, y: number, angle: number, length: number, width: number, hue: number, depth: number) => {
-      if (depth > 8 || length < 4) return;
-      const endX = x + Math.cos(angle) * length;
-      const endY = y + Math.sin(angle) * length;
-      branchesRef.current.push({
-        x1: x, y1: y, x2: endX, y2: endY,
-        angle, depth, width, hue,
-        alpha: 0.7 + depth * 0.03,
-        age: 0, growthTarget: length, growth: 0,
-      });
+    // Pre-generate a sturdy base tree structure so it never floats
+    const generateTreeBase = () => {
+      const W = canvas.width, H = canvas.height;
+      branchesRef.current = [];
+      
+      const buildTree = (x: number, y: number, angle: number, length: number, width: number, depth: number) => {
+        if (depth > 6) return;
+        const x2 = x + Math.cos(angle) * length;
+        const y2 = y + Math.sin(angle) * length;
+        branchesRef.current.push({
+          x1: x, y1: y, x2, y2, angle, length, width, depth, currentLength: 0
+        });
+
+        const subBranches = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < subBranches; i++) {
+          const aOffset = (i - (subBranches - 1) / 2) * 0.45 + (Math.random() - 0.5) * 0.15;
+          const nextLen = length * (0.68 + Math.random() * 0.1);
+          buildTree(x2, y2, angle + aOffset, nextLen, width * 0.7, depth + 1);
+        }
+      };
+
+      // Root trunk
+      buildTree(W / 2, H - 40, -Math.PI / 2, H * 0.16, 12, 0);
     };
 
     resize();
     window.addEventListener('resize', resize);
 
-    let lastBranchTime = 0;
-
-    const addNoteGrowth = (noteIdx: number) => {
+    // Spawns stardust particles around the tree branches
+    const spawnNotesEffect = (noteIdx: number) => {
       const freq = C_MAJOR[noteIdx % C_MAJOR.length];
-      playNote(freq, 'sine', 1.0, 0.14);
+      playNote(freq, 'sine', 1.2, 0.12);
 
-      const hue = 200 + noteIdx * 20;
-      // Grow new branches from tips
-      const tips = branchesRef.current.filter(b => b.depth >= 3 && b.growth > 0.8);
-      if (tips.length > 0) {
-        const tip = tips[Math.floor(Math.random() * tips.length)];
-        const spread = 0.4;
-        [-spread, spread].forEach(dAngle => {
-          growBranch(
-            tip.x2, tip.y2,
-            tip.angle + dAngle + (Math.random() - 0.5) * 0.3,
-            tip.growthTarget * 0.62,
-            Math.max(tip.width * 0.55, 0.5),
+      const hue = 140 + (noteIdx * 35) % 120; // Teal and Greens
+      const outerBranches = branchesRef.current.filter(b => b.depth >= 4);
+
+      if (outerBranches.length > 0) {
+        const count = 12 + Math.floor(Math.random() * 10);
+        for (let i = 0; i < count; i++) {
+          const b = outerBranches[Math.floor(Math.random() * outerBranches.length)];
+          const t = Math.random();
+          const bx = b.x1 + (b.x2 - b.x1) * t;
+          const by = b.y1 + (b.y2 - b.y1) * t;
+          
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.5 + Math.random() * 1.5;
+          
+          particlesRef.current.push({
+            x: bx, y: by,
+            vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 0.5,
+            vy: Math.sin(angle) * speed - 0.2 - Math.random() * 0.5,
+            r: 1.5 + Math.random() * 3,
             hue,
-            tip.depth + 1
-          );
-        });
+            alpha: 0.8 + Math.random() * 0.2,
+            life: 0,
+            maxLife: 100 + Math.random() * 120,
+            type: Math.random() < 0.35 ? 'flower' : 'leaf',
+          });
+        }
       }
     };
 
-    const addHarmonyFlower = () => {
-      const tips = branchesRef.current.filter(b => b.depth >= 5 && b.growth > 0.9);
-      tips.slice(0, 3).forEach(tip => {
-        flowersRef.current.push({
-          x: tip.x2, y: tip.y2,
-          r: 0, hue: 120 + Math.random() * 80,
-          alpha: 0.9, age: 0, petals: 5 + Math.floor(Math.random() * 5),
-        });
-      });
-      // Play a chord
-      playNote(261.63, 'sine', 1.2, 0.1);
-      playNote(329.63, 'sine', 1.2, 0.08);
-      playNote(392.00, 'sine', 1.2, 0.06);
-    };
-
-    const addLeaves = () => {
-      const branches = branchesRef.current.filter(b => b.depth >= 4 && b.growth > 0.8);
-      for (let i = 0; i < 8; i++) {
-        const b = branches[Math.floor(Math.random() * branches.length)];
-        if (!b) continue;
-        const t = Math.random();
-        leavesRef.current.push({
-          x: b.x1 + (b.x2 - b.x1) * t,
-          y: b.y1 + (b.y2 - b.y1) * t,
-          angle: b.angle + (Math.random() - 0.5) * 1.5,
-          size: 3 + Math.random() * 8,
-          hue: 100 + Math.random() * 60,
-          alpha: 0.8, age: 0,
-        });
-      }
-    };
-
-    // Auto grow over time
-    let noteCounter = 0;
-    const autoGrowInterval = setInterval(() => {
-      addNoteGrowth(noteCounter++);
-      if (noteCounter % 4 === 0) addHarmonyFlower();
-      if (noteCounter % 2 === 0) addLeaves();
-    }, 800);
-
-    // Click to play note and grow
+    // Click triggers notes
     const onClick = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const freq = C_MAJOR[Math.floor(Math.random() * C_MAJOR.length)];
-      playNote(freq, 'sine', 1.2, 0.16);
-      addNoteGrowth(Math.floor(Math.random() * C_MAJOR.length));
-      addHarmonyFlower();
-      addLeaves();
+      const clickX = e.clientX - rect.left;
+      const noteIdx = Math.floor((clickX / canvas.width) * 12);
+      spawnNotesEffect(noteIdx);
     };
     canvas.addEventListener('click', onClick);
 
+    // Auto forest ambiance
+    let stepCount = 0;
+    const interval = setInterval(() => {
+      spawnNotesEffect(stepCount++);
+    }, 900);
+
     const draw = () => {
-      timeRef.current += 0.012;
+      timeRef.current += 0.008;
       const t = timeRef.current;
       const W = canvas.width, H = canvas.height;
 
-      ctx.fillStyle = 'rgba(1, 2, 8, 0.25)';
+      // restained deep palette clearing
+      ctx.fillStyle = 'rgba(3, 4, 12, 0.12)';
       ctx.fillRect(0, 0, W, H);
 
-      // Ground glow
-      const groundGrd = ctx.createRadialGradient(rootX.current, rootY.current, 0, rootX.current, rootY.current, 120);
-      groundGrd.addColorStop(0, 'rgba(0, 100, 255, 0.15)');
-      groundGrd.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = groundGrd;
+      // Deep cyan/blue glow center behind the tree
+      const radial = ctx.createRadialGradient(W / 2, H * 0.6, 10, W / 2, H * 0.6, W * 0.65);
+      radial.addColorStop(0, 'rgba(0, 70, 150, 0.06)');
+      radial.addColorStop(0.5, 'rgba(0, 30, 80, 0.02)');
+      radial.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = radial;
       ctx.fillRect(0, 0, W, H);
 
-      // Draw branches
-      branchesRef.current.forEach(branch => {
-        branch.growth = Math.min(branch.growth + 0.015, 1);
-        const gx = branch.x1 + (branch.x2 - branch.x1) * branch.growth;
-        const gy = branch.y1 + (branch.y2 - branch.y1) * branch.growth;
+      // Sway offset using noise/sine waves
+      const getSwayX = (y: number, depth: number) => {
+        const factor = (H - y) / H; // higher up = more sway
+        return Math.sin(t * 1.5 + y * 0.01) * 22 * factor * (depth / 6);
+      };
 
-        ctx.globalAlpha = branch.alpha * branch.growth;
-        ctx.strokeStyle = `hsl(${branch.hue}, 80%, 65%)`;
-        ctx.shadowBlur = branch.depth < 3 ? 18 : 8;
-        ctx.shadowColor = `hsl(${branch.hue}, 80%, 60%)`;
-        ctx.lineWidth = branch.width;
-        ctx.lineCap = 'round';
+      // Draw branch skeleton
+      branchesRef.current.forEach(b => {
+        // Grow dynamically over time
+        if (b.currentLength < b.length) {
+          b.currentLength += (b.length - b.currentLength) * 0.06 + 0.2;
+        }
+
+        const sway1 = getSwayX(b.y1, b.depth);
+        const sway2 = getSwayX(b.y2, b.depth + 1);
+
+        const x1 = b.x1 + sway1;
+        const x2 = b.x1 + sway1 + Math.cos(b.angle) * b.currentLength;
+        const y2 = b.y2; // vertical height doesn't sway horizontally
+
+        // Glow style
         ctx.beginPath();
-        ctx.moveTo(branch.x1, branch.y1);
-        ctx.lineTo(gx, gy);
+        ctx.moveTo(x1, b.y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineWidth = b.width;
+        ctx.lineCap = 'round';
+
+        // Luminescent coloring: fades to bright cyan/emerald at tips
+        const hue = 150 + b.depth * 15;
+        ctx.strokeStyle = `hsla(${hue}, 85%, 65%, ${0.35 + 0.05 * b.depth})`;
+        ctx.shadowBlur = b.depth < 3 ? 12 : 5;
+        ctx.shadowColor = `hsl(${hue}, 80%, 55%)`;
         ctx.stroke();
       });
 
       ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
 
-      // Draw flowers
-      flowersRef.current.forEach(flower => {
-        flower.age += 0.02;
-        flower.r = Math.min(flower.r + 0.4, 14);
-        flower.alpha = Math.max(flower.alpha - 0.001, 0.3);
+      // Update and draw glowing particles
+      let pIdx = 0;
+      while (pIdx < particlesRef.current.length) {
+        const p = particlesRef.current[pIdx];
+        p.life++;
 
-        const pulse = 1 + 0.08 * Math.sin(t * 3 + flower.age);
-        ctx.globalAlpha = flower.alpha;
-        for (let p = 0; p < flower.petals; p++) {
-          const pAngle = (p / flower.petals) * Math.PI * 2;
-          const px = flower.x + Math.cos(pAngle) * flower.r * pulse;
-          const py = flower.y + Math.sin(pAngle) * flower.r * pulse * 0.8;
-          ctx.fillStyle = `hsl(${flower.hue + p * 15}, 70%, 70%)`;
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = `hsl(${flower.hue}, 80%, 60%)`;
+        // Add wind drift
+        p.vx += Math.sin(t * 2 + p.y * 0.01) * 0.025;
+        p.vy += 0.005; // falling speed
+        p.x += p.vx;
+        p.y += p.vy;
+
+        const ageRatio = p.life / p.maxLife;
+        const alpha = p.alpha * (1 - ageRatio);
+
+        if (alpha > 0) {
           ctx.beginPath();
-          ctx.arc(px, py, flower.r * 0.4, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.r * (1.2 - ageRatio * 0.4), 0, Math.PI * 2);
+          ctx.fillStyle = `hsla(${p.hue}, 90%, 75%, ${alpha})`;
+          ctx.shadowBlur = 6;
+          ctx.shadowColor = `hsl(${p.hue}, 85%, 65%)`;
           ctx.fill();
         }
-        // Center
-        ctx.fillStyle = `hsl(${flower.hue + 30}, 80%, 90%)`;
-        ctx.beginPath();
-        ctx.arc(flower.x, flower.y, flower.r * 0.25, 0, Math.PI * 2);
-        ctx.fill();
-      });
 
-      // Draw leaves
-      leavesRef.current.forEach(leaf => {
-        leaf.age += 0.01;
-        leaf.alpha = Math.max(leaf.alpha - 0.0008, 0.15);
-        const leafPulse = 1 + 0.05 * Math.sin(leaf.age * 3 + t);
-
-        ctx.globalAlpha = leaf.alpha;
-        ctx.fillStyle = `hsl(${leaf.hue}, 75%, 55%)`;
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = `hsl(${leaf.hue}, 80%, 50%)`;
-        ctx.save();
-        ctx.translate(leaf.x, leaf.y);
-        ctx.rotate(leaf.angle + 0.2 * Math.sin(leaf.age + t));
-        ctx.scale(leafPulse, leafPulse);
-        ctx.beginPath();
-        ctx.ellipse(0, 0, leaf.size * 0.4, leaf.size, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      });
+        if (p.life >= p.maxLife || p.y > H + 10 || p.x < -10 || p.x > W + 10) {
+          particlesRef.current.splice(pIdx, 1);
+        } else {
+          pIdx++;
+        }
+      }
 
       ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
 
-      // Trim old particles to keep perf
-      if (flowersRef.current.length > 200) flowersRef.current = flowersRef.current.slice(-120);
-      if (leavesRef.current.length > 400) leavesRef.current = leavesRef.current.slice(-250);
-      if (branchesRef.current.length > 500) branchesRef.current = branchesRef.current.slice(-300);
+      // Instruction overlay
+      if (t < 5) {
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.font = '0.72rem Space Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Click anywhere to grow and release sonic stardust', W / 2, H - 25);
+      }
 
       animRef.current = requestAnimationFrame(draw);
     };
@@ -237,21 +224,22 @@ export default function ExhibitForest() {
     return () => {
       window.removeEventListener('resize', resize);
       canvas.removeEventListener('click', onClick);
-      clearInterval(autoGrowInterval);
+      clearInterval(interval);
       cancelAnimationFrame(animRef.current);
     };
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', background: '#030308' }}>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       <div style={{
-        position: 'absolute', bottom: '1.5rem', left: '1.5rem',
-        fontFamily: 'Space Grotesk, sans-serif', fontSize: '0.72rem', color: 'rgba(100,255,160,0.6)',
-        lineHeight: 1.7, pointerEvents: 'none',
+        position: 'absolute', bottom: '1.5rem', right: '1.5rem',
+        fontFamily: 'Space Mono, monospace', fontSize: '0.58rem',
+        color: 'rgba(0, 255, 153, 0.45)', lineHeight: 1.8, pointerEvents: 'none', textAlign: 'right',
       }}>
-        <div style={{ color: '#00ff88', marginBottom: '0.3rem', fontWeight: 600 }}>🌿 GROWING SONIC FOREST</div>
-        Click anywhere to grow branches · Harmony blooms flowers · Rhythm scatters leaves
+        <div style={{ color: '#00ff99', marginBottom: '0.2rem' }}>∿ GROWING FOREST</div>
+        <div>Bioluminescent fractal · Dynamic wind sway</div>
+        <div>Click to interact</div>
       </div>
     </div>
   );
